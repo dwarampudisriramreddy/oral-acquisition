@@ -131,8 +131,7 @@ class CameraCaptureActivity : AppCompatActivity() {
             try {
                 val modes = cm.getCameraCharacteristics(macroId)
                     .get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES)
-                    .orEmpty()
-                modes.any { it == CameraCharacteristics.CONTROL_AF_MODE_MACRO }
+                modes?.any { it == CameraCharacteristics.CONTROL_AF_MODE_MACRO } == true
             } catch (_: Exception) {
                 false
             }
@@ -151,9 +150,17 @@ class CameraCaptureActivity : AppCompatActivity() {
 
     private fun findDefaultBackCamera(): androidx.camera.core.CameraInfo? {
         val provider = cameraProvider ?: return null
-        return provider.availableCameraInfos.firstOrNull {
-            it.cameraFacing == CameraSelector.LENS_FACING_BACK
+        for (info in provider.availableCameraInfos) {
+            val isBack = try {
+                Camera2CameraInfo.from(info)
+                    .getCameraCharacteristic(CameraCharacteristics.LENS_FACING) ==
+                    CameraCharacteristics.LENS_FACING_BACK
+            } catch (_: Exception) {
+                false
+            }
+            if (isBack) return info
         }
+        return null
     }
 
     private fun macroSelector(): CameraSelector? {

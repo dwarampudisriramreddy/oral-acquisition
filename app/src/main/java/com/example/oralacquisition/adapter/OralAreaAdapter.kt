@@ -10,6 +10,7 @@ import com.example.oralacquisition.databinding.ItemOralAreaBinding
 class OralAreaAdapter(
     private val areas: List<OralArea>,
     private val onCapture: (OralArea) -> Unit,
+    private val onMacro: (OralArea) -> Unit,
     private val onRemove: (OralArea) -> Unit
 ) : RecyclerView.Adapter<OralAreaAdapter.OralAreaViewHolder>() {
 
@@ -44,6 +45,7 @@ class OralAreaAdapter(
             }
 
             binding.btnCapture.setOnClickListener { onCapture(area) }
+            binding.btnMacro.setOnClickListener { onMacro(area) }
             binding.btnRemove.setOnClickListener { onRemove(area) }
         }
     }

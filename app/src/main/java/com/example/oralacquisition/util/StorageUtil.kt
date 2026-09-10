@@ -53,6 +53,33 @@ object StorageUtil {
         }
     }
 
+    fun copyPhotoIntoArea(
+        context: Context,
+        patientName: String,
+        areaName: String,
+        sourceUri: Uri
+    ): PhotoLocation? {
+        val destination = createPhotoLocation(context, patientName, areaName)
+        val copied = runCatching {
+            val input = context.contentResolver.openInputStream(sourceUri) ?: return null
+            input.use { source ->
+                val output = context.contentResolver.openOutputStream(
+                    destination.uri, "w"
+                ) ?: throw IllegalStateException("Cannot open destination")
+                output.use { dest ->
+                    source.copyTo(dest)
+                }
+            }
+            true
+        }.getOrElse { false }
+        if (!copied) {
+            deletePhoto(context, destination)
+            return null
+        }
+        finalizeMediaStoreUri(context, destination.uri)
+        return destination
+    }
+
     fun deletePhoto(context: Context, location: PhotoLocation) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             context.contentResolver.delete(location.uri, null, null)

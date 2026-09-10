@@ -20,11 +20,11 @@ class MainActivity : AppCompatActivity() {
             val opNumber = binding.etOpNumber.text.toString().trim()
 
             if (name.isEmpty()) {
-                binding.tilPatientName.error = "Patient name is required"
+                binding.etPatientName.error = "Patient name is required"
                 return@setOnClickListener
             }
             if (opNumber.isEmpty()) {
-                binding.tilOpNumber.error = "OP number is required"
+                binding.etOpNumber.error = "OP number is required"
                 return@setOnClickListener
             }
 

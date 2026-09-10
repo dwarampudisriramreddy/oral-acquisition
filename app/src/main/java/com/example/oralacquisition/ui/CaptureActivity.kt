@@ -89,6 +89,9 @@ class CaptureActivity : AppCompatActivity() {
         binding.tvPatientName.text = "Patient: ${patient.name}"
         binding.tvOpNumber.text = "OP Number: ${patient.opNumber}"
 
+        binding.toolbar.title = "Capture Photos"
+        binding.toolbar.setTitleTextColor(resources.getColor(android.R.color.white, null))
+
         areaAdapter = OralAreaAdapter(
             areas = areas,
             onCapture = { area -> launchCamera(area) },

@@ -10,10 +10,14 @@ import android.hardware.camera2.CaptureRequest
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.view.MotionEvent
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
@@ -39,11 +43,17 @@ class CameraCaptureActivity : AppCompatActivity() {
     private lateinit var patientName: String
     private lateinit var areaName: String
 
+    private val handler = Handler(Looper.getMainLooper())
     private var cameraProvider: ProcessCameraProvider? = null
     private var imageCapture: ImageCapture? = null
+    private var boundCamera: androidx.camera.core.Camera? = null
     private var macroCameraId: String? = null
     private var macroAfSupported = false
+    private var autoAfSupported = false
     private var macroOn = false
+    private var currentZoom = 1.0f
+    private var pinchStartDistance = -1f
+    private var pinchStartZoom = 1.0f
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -74,6 +84,34 @@ class CameraCaptureActivity : AppCompatActivity() {
             macroOn = !macroOn
             updateMacroUi()
             bindCamera()
+        }
+
+        binding.btnFocus.setOnClickListener { triggerFocusAtCenter() }
+
+        binding.btnZoomIn.setOnClickListener { applyZoom(currentZoom * 1.5f) }
+        binding.btnZoomOut.setOnClickListener { applyZoom(currentZoom / 1.5f) }
+
+        binding.pvPreview.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    if (event.pointerCount == 1) {
+                        triggerFocus(event.x, event.y)
+                    }
+                }
+                MotionEvent.ACTION_POINTER_DOWN -> {
+                    pinchStartDistance = pinchDistance(event)
+                    pinchStartZoom = currentZoom
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (event.pointerCount >= 2 && pinchStartDistance > 0f) {
+                        val ratio = pinchDistance(event) / pinchStartDistance
+                        applyZoom(pinchStartZoom * ratio)
+                    }
+                }
+                MotionEvent.ACTION_POINTER_UP,
+                MotionEvent.ACTION_UP -> pinchStartDistance = -1f
+            }
+            true
         }
 
         binding.btnShutter.setOnClickListener { capturePhoto() }
@@ -139,12 +177,24 @@ class CameraCaptureActivity : AppCompatActivity() {
             false
         }
 
+        autoAfSupported = if (macroId != null) {
+            try {
+                val modes = cm.getCameraCharacteristics(macroId)
+                    .get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES)
+                modes?.any { it == CameraCharacteristics.CONTROL_AF_MODE_AUTO } == true
+            } catch (_: Exception) {
+                false
+            }
+        } else {
+            false
+        }
+
         if (macroId != null) {
             val defaultBackId = Camera2CameraInfo.from(
                 findDefaultBackCamera() ?: return
             ).cameraId
             binding.tvMacroHint.text =
-                if (macroId == defaultBackId) "Using closest focus camera" else "Macro lens detected"
+                if (macroId == defaultBackId) "Keep phone very close and zoom in" else "Macro lens detected"
         }
     }
 
@@ -183,7 +233,7 @@ class CameraCaptureActivity : AppCompatActivity() {
             )
         )
         binding.tvMacroHint.text =
-            if (macroOn) "Macro mode. Keep phone very close." else "Close up the camera to the area"
+            if (macroOn) "Macro on. Zoom +, tap to focus, shoot." else "Close up the camera to the area"
     }
 
     private fun bindCamera() {
@@ -198,17 +248,18 @@ class CameraCaptureActivity : AppCompatActivity() {
             .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
             .setTargetRotation(binding.pvPreview.display?.rotation ?: 0)
 
-        if (macroOn && macroAfSupported) {
-            Camera2Interop.Extender(previewBuilder)
-                .setCaptureRequestOption(
-                    CaptureRequest.CONTROL_AF_MODE,
-                    CaptureRequest.CONTROL_AF_MODE_MACRO
-                )
-            Camera2Interop.Extender(captureBuilder)
-                .setCaptureRequestOption(
-                    CaptureRequest.CONTROL_AF_MODE,
-                    CaptureRequest.CONTROL_AF_MODE_MACRO
-                )
+        if (macroOn) {
+            val afMode = when {
+                macroAfSupported -> CaptureRequest.CONTROL_AF_MODE_MACRO
+                autoAfSupported -> CaptureRequest.CONTROL_AF_MODE_AUTO
+                else -> null
+            }
+            if (afMode != null) {
+                Camera2Interop.Extender(previewBuilder)
+                    .setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, afMode)
+                Camera2Interop.Extender(captureBuilder)
+                    .setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, afMode)
+            }
         }
 
         val preview = previewBuilder
@@ -219,11 +270,59 @@ class CameraCaptureActivity : AppCompatActivity() {
         this.imageCapture = imageCapture
 
         try {
-            provider.bindToLifecycle(this, resolvedSelector, preview, imageCapture)
+            val camera = provider.bindToLifecycle(
+                this, resolvedSelector, preview, imageCapture
+            )
+            boundCamera = camera
+            currentZoom = 1.0f
+            updateZoomLabel()
+            if (macroOn) {
+                handler.postDelayed({ triggerFocusAtCenter() }, 700)
+            } else {
+                handler.removeCallbacksAndMessages(null)
+            }
         } catch (e: Exception) {
             Toast.makeText(this, "Unable to start camera: ${e.message}", Toast.LENGTH_SHORT).show()
             setResult(RESULT_CANCELED)
             finish()
+        }
+    }
+
+    private fun triggerFocusAtCenter() {
+        triggerFocus(
+            binding.pvPreview.width / 2f,
+            binding.pvPreview.height / 2f
+        )
+    }
+
+    private fun applyZoom(target: Float) {
+        val camera = boundCamera ?: return
+        val maxZoom = camera.cameraInfo.zoomState.value?.maxZoomRatio ?: 1f
+        currentZoom = target.coerceIn(1f, maxZoom)
+        camera.cameraControl.setZoomRatio(currentZoom)
+        updateZoomLabel()
+    }
+
+    private fun updateZoomLabel() {
+        binding.tvZoom.text = String.format("%.1fx", currentZoom)
+    }
+
+    private fun pinchDistance(event: MotionEvent): Float {
+        val dx = event.getX(0) - event.getX(1)
+        val dy = event.getY(0) - event.getY(1)
+        return Math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
+    }
+
+    private fun triggerFocus(x: Float, y: Float) {
+        val camera = boundCamera ?: return
+        try {
+            val point = binding.pvPreview.meteringPointFactory.createPoint(x, y)
+            val action = FocusMeteringAction.Builder(
+                point,
+                FocusMeteringAction.FLAG_AF or FocusMeteringAction.FLAG_AE
+            ).build()
+            camera.cameraControl.startFocusAndMetering(action)
+        } catch (_: Exception) {
         }
     }
 

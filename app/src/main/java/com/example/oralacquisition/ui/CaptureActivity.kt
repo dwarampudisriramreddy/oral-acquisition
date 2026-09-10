@@ -1,17 +1,13 @@
 package com.example.oralacquisition.ui
 
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.database.Cursor
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.oralacquisition.adapter.OralAreaAdapter
 import com.example.oralacquisition.data.OralArea
@@ -42,39 +38,29 @@ class CaptureActivity : AppCompatActivity() {
     private lateinit var areaAdapter: OralAreaAdapter
     private val areas = ORAL_AREAS.map { it.copy() }.toMutableList()
     private var currentArea: OralArea? = null
-    private var pendingUri: Uri? = null
-    private var pendingFilePath: String? = null
 
-    private val takePictureLauncher = registerForActivityResult(
-        ActivityResultContracts.TakePicture()
-    ) { success ->
-        val area = currentArea ?: return@registerForActivityResult
-        val uri = pendingUri
-        if (success && uri != null) {
-            StorageUtil.finalizeMediaStoreUri(this, uri)
-            area.photoUri = uri
-            area.photoPath = pendingFilePath ?: queryDataPath(uri)
-            areaAdapter.notifyDataSetChanged()
-            Toast.makeText(this, "Photo captured for ${area.name}", Toast.LENGTH_SHORT).show()
-        } else {
-            deletePhoto(uri, pendingFilePath)
-            Toast.makeText(this, "Capture cancelled", Toast.LENGTH_SHORT).show()
-        }
-        pendingUri = null
-        pendingFilePath = null
-        currentArea = null
-    }
-
-    private val writePermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
+    private val cameraLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
         val area = currentArea
-        if (granted && area != null) {
-            launchCamera(area)
-        } else {
-            Toast.makeText(this, "Storage permission is required", Toast.LENGTH_SHORT).show()
-            currentArea = null
+        if (result.resultCode == RESULT_OK && result.data != null) {
+            val uri = result.data!!
+                .getStringExtra(CameraCaptureActivity.EXTRA_PHOTO_URI)
+                ?.let { Uri.parse(it) }
+            val path = result.data!!
+                .getStringExtra(CameraCaptureActivity.EXTRA_PHOTO_PATH)
+                ?.ifEmpty { null }
+
+            area?.photoUri = uri
+            area?.photoPath = path ?: uri?.let { queryDataPath(it) }
+            area?.let { areaAdapter.notifyDataSetChanged() }
+            Toast.makeText(
+                this,
+                "Photo captured for ${area?.name ?: "area"}",
+                Toast.LENGTH_SHORT
+            ).show()
         }
+        currentArea = null
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -103,28 +89,12 @@ class CaptureActivity : AppCompatActivity() {
     }
 
     private fun launchCamera(area: OralArea) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            val granted = ContextCompat.checkSelfPermission(
-                this, Manifest.permission.WRITE_EXTERNAL_STORAGE
-            ) == PackageManager.PERMISSION_GRANTED
-            if (!granted) {
-                currentArea = area
-                writePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                return
-            }
-        }
-
-        val patientFolder = StorageUtil.createPhotoLocation(
-            this, patient.name, area.name
-        )
         currentArea = area
-        pendingUri = patientFolder.uri
-        pendingFilePath = patientFolder.filePath
-
-        val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
-            putExtra(MediaStore.EXTRA_OUTPUT, patientFolder.uri)
+        val intent = Intent(this, CameraCaptureActivity::class.java).apply {
+            putExtra(CameraCaptureActivity.EXTRA_PATIENT_NAME, patient.name)
+            putExtra(CameraCaptureActivity.EXTRA_AREA_NAME, area.name)
         }
-        takePictureLauncher.launch(patientFolder.uri)
+        cameraLauncher.launch(intent)
     }
 
     private fun removePhoto(area: OralArea) {

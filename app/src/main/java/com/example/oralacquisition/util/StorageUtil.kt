@@ -53,6 +53,16 @@ object StorageUtil {
         }
     }
 
+    fun deletePhoto(context: Context, location: PhotoLocation) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            context.contentResolver.delete(location.uri, null, null)
+        } else {
+            location.filePath?.let { path ->
+                File(path).takeIf { it.exists() }?.delete()
+            }
+        }
+    }
+
     private fun createMediaStoreUri(
         context: Context,
         patientName: String,

@@ -1,7 +1,6 @@
 package com.example.oralacquisition.ui
 
 import android.Manifest
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.database.Cursor
 import android.net.Uri
@@ -44,31 +43,6 @@ class CaptureActivity : AppCompatActivity() {
     private var currentArea: OralArea? = null
     private var pendingUri: Uri? = null
     private var pendingFilePath: String? = null
-    private var macroArea: OralArea? = null
-
-    private val pickPhotoLauncher = registerForActivityResult(
-        ActivityResultContracts.GetContent()
-    ) { uri ->
-        val area = macroArea ?: return@registerForActivityResult
-        macroArea = null
-        if (uri != null) {
-            val destination = StorageUtil.copyPhotoIntoArea(
-                this, patient.name, area.name, uri
-            )
-            if (destination != null) {
-                area.photoUri = destination.uri
-                area.photoPath = destination.filePath
-                areaAdapter.notifyDataSetChanged()
-                Toast.makeText(
-                    this,
-                    "Macro photo attached to ${area.name}",
-                    Toast.LENGTH_SHORT
-                ).show()
-            } else {
-                Toast.makeText(this, "Could not copy the photo", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
 
     private val takePictureLauncher = registerForActivityResult(
         ActivityResultContracts.TakePicture()
@@ -117,12 +91,9 @@ class CaptureActivity : AppCompatActivity() {
         binding.toolbar.title = "Capture Photos"
         binding.toolbar.setTitleTextColor(resources.getColor(android.R.color.white, null))
 
-        binding.btnOpenCamera.setOnClickListener { openPhoneCameraApp() }
-
         areaAdapter = OralAreaAdapter(
             areas = areas,
             onCapture = { area -> launchCamera(area) },
-            onMacro = { area -> launchMacroPicker(area) },
             onRemove = { area -> removePhoto(area) }
         )
 
@@ -145,28 +116,6 @@ class CaptureActivity : AppCompatActivity() {
         pendingUri = location.uri
         pendingFilePath = location.filePath
         takePictureLauncher.launch(location.uri)
-    }
-
-    private fun launchMacroPicker(area: OralArea) {
-        macroArea = area
-        pickPhotoLauncher.launch("image/*")
-    }
-
-    private fun openPhoneCameraApp() {
-        val launchIntent = packageManager.getLaunchIntentForPackage("com.android.camera")
-        if (launchIntent != null) {
-            startActivity(launchIntent)
-            return
-        }
-        val mainIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        val camera = packageManager.queryIntentActivities(mainIntent, 0).firstOrNull {
-            it.activityInfo.packageName.lowercase().contains("camera")
-        }
-        if (camera != null) {
-            startActivity(mainIntent.setPackage(camera.activityInfo.packageName))
-        } else {
-            Toast.makeText(this, "No camera app found", Toast.LENGTH_SHORT).show()
-        }
     }
 
     private fun removePhoto(area: OralArea) {

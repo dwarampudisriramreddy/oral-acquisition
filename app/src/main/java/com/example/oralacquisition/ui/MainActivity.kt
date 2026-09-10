@@ -1,14 +1,38 @@
 package com.example.oralacquisition.ui
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import android.view.ViewGroup
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import androidx.recyclerview.widget.GridLayoutManager
+import com.example.oralacquisition.adapter.GalleryAdapter
 import com.example.oralacquisition.data.Patient
 import com.example.oralacquisition.databinding.ActivityMainBinding
+import com.example.oralacquisition.util.StorageUtil
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
+    private lateinit var galleryAdapter: GalleryAdapter
+
+    private val readPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            loadGallery()
+        } else {
+            binding.tvGalleryEmpty.text = "Storage permission needed to show photos"
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -33,5 +57,47 @@ class MainActivity : AppCompatActivity() {
             intent.putExtra("patient", patient)
             startActivity(intent)
         }
+
+        binding.rvGallery.layoutManager = GridLayoutManager(this, 3)
+        galleryAdapter = GalleryAdapter(emptyList()) { item -> showPhotoPreview(item) }
+        binding.rvGallery.adapter = galleryAdapter
+    }
+
+    override fun onResume() {
+        super.onResume()
+        loadGallery()
+    }
+
+    private fun loadGallery() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            val granted = ContextCompat.checkSelfPermission(
+                this, Manifest.permission.READ_EXTERNAL_STORAGE
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                readPermissionLauncher.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
+                return
+            }
+        }
+        val items = StorageUtil.queryAllPhotos(this)
+        binding.tvGalleryEmpty.visibility =
+            if (items.isEmpty()) ViewGroup.VISIBLE else ViewGroup.GONE
+        galleryAdapter = GalleryAdapter(items) { item -> showPhotoPreview(item) }
+        binding.rvGallery.adapter = galleryAdapter
+    }
+
+    private fun showPhotoPreview(item: StorageUtil.PhotoItem) {
+        val imageView = ImageView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                (resources.displayMetrics.widthPixels * 0.8).toInt(),
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            item.uri?.let { setImageURI(it) }
+        }
+        AlertDialog.Builder(this)
+            .setTitle(item.label)
+            .setView(imageView)
+            .setPositiveButton("Close", null)
+            .show()
     }
 }

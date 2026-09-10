@@ -53,31 +53,95 @@ object StorageUtil {
         }
     }
 
-    fun copyPhotoIntoArea(
-        context: Context,
-        patientName: String,
-        areaName: String,
-        sourceUri: Uri
-    ): PhotoLocation? {
-        val destination = createPhotoLocation(context, patientName, areaName)
-        val copied = runCatching {
-            val input = context.contentResolver.openInputStream(sourceUri) ?: return null
-            input.use { source ->
-                val output = context.contentResolver.openOutputStream(
-                    destination.uri, "w"
-                ) ?: throw IllegalStateException("Cannot open destination")
-                output.use { dest ->
-                    source.copyTo(dest)
-                }
-            }
-            true
-        }.getOrElse { false }
-        if (!copied) {
-            deletePhoto(context, destination)
-            return null
+    data class PhotoItem(
+        val uri: Uri?,
+        val filePath: String?,
+        val label: String
+    )
+
+    fun queryAllPhotos(context: Context): List<PhotoItem> {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            queryMediaStorePhotos(context)
+        } else {
+            queryLegacyPhotos(context)
         }
-        finalizeMediaStoreUri(context, destination.uri)
-        return destination
+    }
+
+    private fun queryMediaStorePhotos(context: Context): List<PhotoItem> {
+        val collection = MediaStore.Images.Media.getContentUri(
+            MediaStore.VOLUME_EXTERNAL_PRIMARY
+        )
+        val selection = "${MediaStore.Images.Media.RELATIVE_PATH} LIKE ?"
+        val selectionArgs = arrayOf("$BASE_PATH/%")
+        return context.contentResolver.query(
+            collection,
+            arrayOf(
+                MediaStore.Images.Media._ID,
+                MediaStore.Images.Media.RELATIVE_PATH
+            ),
+            selection,
+            selectionArgs,
+            "${MediaStore.Images.Media.DATE_ADDED} DESC"
+        )?.use { cursor ->
+            val items = ArrayList<PhotoItem>()
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID))
+                val relativePath = cursor.getString(
+                    cursor.getColumnIndexOrThrow(MediaStore.Images.Media.RELATIVE_PATH)
+                ) ?: ""
+                items.add(
+                    PhotoItem(
+                        uri = Uri.withAppendedPath(collection, id.toString()),
+                        filePath = null,
+                        label = labelFromPath(relativePath)
+                    )
+                )
+            }
+            items
+        } ?: emptyList()
+    }
+
+    private fun queryLegacyPhotos(context: Context): List<PhotoItem> {
+        val collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        val selection = "${MediaStore.Images.Media.DATA} LIKE ?"
+        val selectionArgs = arrayOf("%/Pictures/$BASE_FOLDER_NAME/%")
+        return context.contentResolver.query(
+            collection,
+            arrayOf(
+                MediaStore.Images.Media._ID,
+                MediaStore.Images.Media.DATA
+            ),
+            selection,
+            selectionArgs,
+            "${MediaStore.Images.Media.DATE_ADDED} DESC"
+        )?.use { cursor ->
+            val items = ArrayList<PhotoItem>()
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID))
+                val data = cursor.getString(
+                    cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA)
+                ) ?: ""
+                items.add(
+                    PhotoItem(
+                        uri = Uri.withAppendedPath(collection, id.toString()),
+                        filePath = data,
+                        label = labelFromPath(data)
+                    )
+                )
+            }
+            items
+        } ?: emptyList()
+    }
+
+    private fun labelFromPath(path: String): String {
+        val segments = path.split("/").filter { it.isNotBlank() }
+        val baseIndex = segments.indexOf(BASE_FOLDER_NAME)
+        if (baseIndex == -1) return BASE_FOLDER_NAME
+        var parts = segments.subList(baseIndex + 1, segments.size)
+        if (parts.isNotEmpty() && parts.last().contains('.')) {
+            parts = parts.subList(0, parts.size - 1)
+        }
+        return if (parts.isEmpty()) BASE_FOLDER_NAME else parts.joinToString("/")
     }
 
     fun deletePhoto(context: Context, location: PhotoLocation) {

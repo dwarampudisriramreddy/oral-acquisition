@@ -49,7 +49,7 @@ class CaptureActivity : AppCompatActivity() {
     ) { success ->
         val area = currentArea ?: return@registerForActivityResult
         val uri = pendingUri
-        if (success && uri != null) {
+        if ((success || photoWritten(uri, pendingFilePath)) && uri != null) {
             StorageUtil.finalizeMediaStoreUri(this, uri)
             area.photoUri = uri
             area.photoPath = pendingFilePath ?: queryDataPath(uri)
@@ -62,6 +62,30 @@ class CaptureActivity : AppCompatActivity() {
         pendingUri = null
         pendingFilePath = null
         currentArea = null
+    }
+
+    private fun photoWritten(uri: Uri?, filePath: String?): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (uri == null) return false
+            var cursor: Cursor? = null
+            return try {
+                cursor = contentResolver.query(
+                    uri,
+                    arrayOf(MediaStore.Images.Media.SIZE),
+                    null,
+                    null,
+                    null
+                )
+                cursor != null && cursor.moveToFirst() && cursor.getLong(0) > 0L
+            } catch (e: Exception) {
+                false
+            } finally {
+                cursor?.close()
+            }
+        } else {
+            val file = filePath?.let { File(it) }
+            return file != null && file.exists() && file.length() > 0L
+        }
     }
 
     private val writePermissionLauncher = registerForActivityResult(

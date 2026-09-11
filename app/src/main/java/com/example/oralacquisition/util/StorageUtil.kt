@@ -102,6 +102,31 @@ object StorageUtil {
         }
     }
 
+    fun latestImageInFolder(context: Context, afterMillis: Long): Boolean {
+        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        } else {
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        }
+        val pathColumn = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.Images.Media.RELATIVE_PATH
+        } else {
+            MediaStore.Images.Media.DATA
+        }
+        val selection =
+            "$pathColumn LIKE ? AND ${MediaStore.Images.Media.DATE_ADDED} >= ${afterMillis / 1000}"
+        val selectionArgs = arrayOf("%Pictures/$BASE_FOLDER_NAME/%")
+        return context.contentResolver.query(
+            collection,
+            arrayOf(MediaStore.Images.Media._ID),
+            selection,
+            selectionArgs,
+            "${MediaStore.Images.Media.DATE_ADDED} DESC"
+        )?.use { cursor ->
+            cursor.moveToFirst()
+        } ?: false
+    }
+
     data class PhotoItem(
         val uri: Uri?,
         val filePath: String?,

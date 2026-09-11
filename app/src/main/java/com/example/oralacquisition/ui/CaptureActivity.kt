@@ -1,14 +1,12 @@
 package com.example.oralacquisition.ui
 
 import android.Manifest
-import android.content.Intent
 import android.content.pm.PackageManager
+import android.database.Cursor
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.util.Log
+import android.provider.MediaStore
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -42,24 +40,47 @@ class CaptureActivity : AppCompatActivity() {
     private lateinit var patient: Patient
     private lateinit var areaAdapter: OralAreaAdapter
     private val areas = ORAL_AREAS.map { it.copy() }.toMutableList()
-    private var captureArea: OralArea? = null
+    private var currentArea: OralArea? = null
+    private var pendingUri: Uri? = null
+    private var pendingFilePath: String? = null
     private var captureStartedAt = 0L
-    private var pollActive = false
-    private var pendingCopyArea: OralArea? = null
-    private var pendingCopyUri: Uri? = null
-    private val handler = Handler(Looper.getMainLooper())
+
+    private val takePictureLauncher = registerForActivityResult(
+        ActivityResultContracts.TakePicture()
+    ) { success ->
+        val area = currentArea ?: return@registerForActivityResult
+        val uri = pendingUri
+        val savedInOurFolder = uri != null && (
+            photoWritten(uri, pendingFilePath) ||
+                StorageUtil.latestImageInFolder(this, captureStartedAt)
+            )
+        if (success || savedInOurFolder) {
+            if (uri != null) {
+                StorageUtil.finalizeMediaStoreUri(this, uri)
+                area.photoUri = uri
+                area.photoPath = pendingFilePath ?: queryDataPath(uri)
+                areaAdapter.notifyDataSetChanged()
+                Toast.makeText(this, "Photo saved to ${area.name}", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            deletePhoto(uri, pendingFilePath)
+            Toast.makeText(this, "Capture cancelled", Toast.LENGTH_SHORT).show()
+        }
+        pendingUri = null
+        pendingFilePath = null
+        currentArea = null
+        captureStartedAt = 0L
+    }
 
     private val writePermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        val area = pendingCopyArea
-        val uri = pendingCopyUri
-        if (granted && area != null && uri != null) {
-            attachPhotoFromGallery(area, uri)
+        val area = currentArea
+        if (granted && area != null) {
+            launchCamera(area)
         } else {
-            pendingCopyArea = null
-            pendingCopyUri = null
             Toast.makeText(this, "Storage permission is required", Toast.LENGTH_SHORT).show()
+            currentArea = null
         }
     }
 
@@ -88,91 +109,54 @@ class CaptureActivity : AppCompatActivity() {
         binding.rvAreas.adapter = areaAdapter
     }
 
-    override fun onResume() {
-        super.onResume()
-        val area = captureArea ?: return
-        if (captureStartedAt == 0L || pollActive) return
-        Log.d("OralCapture", "Checking for new photo for ${area.name}")
-        pollActive = true
-        pollForPhoto(area, 0)
-    }
-
     private fun launchCamera(area: OralArea) {
-        captureArea = area
-        captureStartedAt = System.currentTimeMillis()
-        openCameraApp()
-    }
-
-    private fun openCameraApp() {
-        val launchIntent = packageManager.getLaunchIntentForPackage("com.android.camera")
-        if (launchIntent != null) {
-            startActivity(launchIntent)
-            return
-        }
-        val mainIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        val camera = packageManager.queryIntentActivities(mainIntent, 0).firstOrNull {
-            it.activityInfo.packageName.lowercase().contains("camera")
-        }
-        if (camera != null) {
-            startActivity(mainIntent.setPackage(camera.activityInfo.packageName))
-        } else {
-            Toast.makeText(this, "No camera app found", Toast.LENGTH_SHORT).show()
-            captureArea = null
-        }
-    }
-
-    private fun pollForPhoto(area: OralArea, attempt: Int) {
-        if (captureArea !== area) {
-            pollActive = false
-            return
-        }
-        val found = StorageUtil.latestImageAfter(this, captureStartedAt)
-        if (found != null) {
-            Log.d("OralCapture", "New photo found for ${area.name}")
-            captureArea = null
-            pollActive = false
-            attachPhotoFromGallery(area, found)
-            return
-        }
-        if (attempt >= 4) {
-            captureArea = null
-            pollActive = false
-            Toast.makeText(
-                this,
-                "No photo found. Open Camera app and try again.",
-                Toast.LENGTH_LONG
-            ).show()
-            return
-        }
-        handler.postDelayed({ pollForPhoto(area, attempt + 1) }, 2000)
-    }
-
-    private fun attachPhotoFromGallery(area: OralArea, uri: Uri) {
+        currentArea = area
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             val granted = ContextCompat.checkSelfPermission(
                 this, Manifest.permission.WRITE_EXTERNAL_STORAGE
             ) == PackageManager.PERMISSION_GRANTED
             if (!granted) {
-                pendingCopyArea = area
-                pendingCopyUri = uri
                 writePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
                 return
             }
         }
-        val destination = StorageUtil.copyPhotoIntoArea(
-            this, patient.name, area.name, uri
-        )
-        if (destination != null) {
-            area.photoUri = destination.uri
-            area.photoPath = destination.filePath
-            areaAdapter.notifyDataSetChanged()
-            Toast.makeText(
-                this,
-                "Photo saved to ${area.name}",
-                Toast.LENGTH_SHORT
-            ).show()
+        val location = StorageUtil.createPhotoLocation(this, patient.name, area.name)
+        pendingUri = location.uri
+        pendingFilePath = location.filePath
+        captureStartedAt = System.currentTimeMillis()
+        takePictureLauncher.launch(location.uri)
+    }
+
+    private fun photoWritten(uri: Uri?, filePath: String?): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (uri == null) return false
+            var cursor: Cursor? = null
+            try {
+                cursor = contentResolver.query(
+                    uri,
+                    arrayOf(MediaStore.Images.Media.SIZE),
+                    null,
+                    null,
+                    null
+                )
+                if (cursor != null && cursor.moveToFirst() && cursor.getLong(0) > 0L) {
+                    return true
+                }
+            } catch (e: Exception) {
+                // fall through to fd check below
+            } finally {
+                cursor?.close()
+            }
+            try {
+                contentResolver.openAssetFileDescriptor(uri, "r")?.use { fd ->
+                    return fd.length > 0L
+                } ?: return false
+            } catch (e: Exception) {
+                false
+            }
         } else {
-            Toast.makeText(this, "Could not save the photo", Toast.LENGTH_SHORT).show()
+            val file = filePath?.let { File(it) }
+            file != null && file.exists() && file.length() > 0L
         }
     }
 
@@ -191,6 +175,28 @@ class CaptureActivity : AppCompatActivity() {
             filePath?.let { path ->
                 File(path).takeIf { it.exists() }?.delete()
             }
+        }
+    }
+
+    private fun queryDataPath(uri: Uri): String? {
+        var cursor: Cursor? = null
+        return try {
+            cursor = contentResolver.query(
+                uri,
+                arrayOf(MediaStore.Images.Media.DATA),
+                null,
+                null,
+                null
+            ) ?: return null
+            if (cursor.moveToFirst()) {
+                cursor.getString(
+                    cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA)
+                )
+            } else {
+                null
+            }
+        } finally {
+            cursor?.close()
         }
     }
 }

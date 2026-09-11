@@ -57,8 +57,10 @@ class CaptureActivity : AppCompatActivity() {
         var savedInOurFolder = uri != null && (written || folderFresh)
 
         var finalPath = pendingFilePath
+        var successfullyRecovered = false
 
-        if (!success && !savedInOurFolder) {
+        // Fallback: camera app completely ignored our output file and saved to its own gallery
+        if (!written && !savedInOurFolder) {
             val latest = StorageUtil.latestImageAfter(this, captureStartedAt)
             if (latest != null && latest != uri) {
                 val copied = StorageUtil.copyPhotoIntoArea(this, patient.name, area.name, latest)
@@ -68,18 +70,26 @@ class CaptureActivity : AppCompatActivity() {
                     finalPath = copied.filePath
                     written = true
                     savedInOurFolder = true
+                    successfullyRecovered = true
                 }
             }
         }
 
-        if (success || savedInOurFolder) {
-            if (uri != null) {
-                StorageUtil.finalizeMediaStoreUri(this, uri)
-                area.photoUri = uri
-                area.photoPath = finalPath ?: queryDataPath(uri)
-                areaAdapter.notifyDataSetChanged()
-                Toast.makeText(this, "Photo saved to ${area.name}", Toast.LENGTH_SHORT).show()
+        if ((success || written) && uri != null) {
+            // If it wasn't a recovered gallery photo, it's our temp file. Copy to MediaStore.
+            if (!successfullyRecovered) {
+                val copied = StorageUtil.copyPhotoIntoArea(this, patient.name, area.name, uri)
+                if (copied != null) {
+                    deletePhoto(uri, pendingFilePath)
+                    uri = copied.uri
+                    finalPath = copied.filePath
+                }
             }
+            StorageUtil.finalizeMediaStoreUri(this, uri)
+            area.photoUri = uri
+            area.photoPath = finalPath ?: queryDataPath(uri)
+            areaAdapter.notifyDataSetChanged()
+            Toast.makeText(this, "Photo saved to ${area.name}", Toast.LENGTH_SHORT).show()
         } else {
             val debug = buildCancelledDebug(
                 success = success,
@@ -176,7 +186,7 @@ class CaptureActivity : AppCompatActivity() {
                 return
             }
         }
-        val location = StorageUtil.createPhotoLocation(this, patient.name, area.name)
+        val location = StorageUtil.createTempPhotoLocation(this, patient.name, area.name)
         pendingUri = location.uri
         pendingFilePath = location.filePath
         captureStartedAt = System.currentTimeMillis()

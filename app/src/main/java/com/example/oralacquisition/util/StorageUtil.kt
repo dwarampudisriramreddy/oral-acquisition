@@ -44,6 +44,20 @@ object StorageUtil {
         }
     }
 
+    fun createTempPhotoLocation(
+        context: Context,
+        patientName: String,
+        areaName: String
+    ): PhotoLocation {
+        val folder = File(context.getExternalFilesDir(null), "OralAcquisition/${sanitize(patientName)}/${sanitize(areaName)}")
+        if (!folder.exists()) folder.mkdirs()
+        val file = File(folder, "${System.currentTimeMillis()}.jpg")
+        return PhotoLocation(
+            uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file),
+            filePath = file.absolutePath
+        )
+    }
+
     fun finalizeMediaStoreUri(context: Context, uri: Uri) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val values = ContentValues().apply {

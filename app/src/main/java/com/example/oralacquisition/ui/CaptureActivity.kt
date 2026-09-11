@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
@@ -51,17 +52,46 @@ class CaptureActivity : AppCompatActivity() {
     ) { success ->
         val area = currentArea ?: return@registerForActivityResult
         val uri = pendingUri
-        if ((success || photoWritten(uri, pendingFilePath)) && uri != null) {
+        val photoInPlace = uri != null && photoWritten(uri, pendingFilePath)
+        if ((success || photoInPlace) && uri != null) {
             StorageUtil.finalizeMediaStoreUri(this, uri)
             area.photoUri = uri
             area.photoPath = pendingFilePath ?: queryDataPath(uri)
             areaAdapter.notifyDataSetChanged()
             Toast.makeText(this, "Photo captured for ${area.name}", Toast.LENGTH_SHORT).show()
         } else {
+            val foundLatest = StorageUtil.latestImageAfter(this, captureStartedAt)
+            val debug = debugCancelledReason(
+                success = success,
+                uri = uri,
+                photoInPlace = photoInPlace,
+                foundLatest = foundLatest != null
+            )
+            Log.w("OralCapture", debug)
             pendingUri = null
             pendingFilePath = null
             currentArea = null
-            handleCancelledCapture(area)
+            if (foundLatest != null) {
+                AlertDialog.Builder(this)
+                    .setTitle("Attach photo")
+                    .setMessage(
+                        "$debug\n\nATTACH the photo the camera saved to its gallery to " +
+                            "'${area.name}'?"
+                    )
+                    .setPositiveButton("Attach") { _, _ ->
+                        attachPhotoFromGallery(area, foundLatest)
+                    }
+                    .setNegativeButton("Retake") { _, _ ->
+                        launchCamera(area)
+                    }
+                    .show()
+            } else {
+                AlertDialog.Builder(this)
+                    .setTitle("Capture cancelled")
+                    .setMessage(debug)
+                    .setPositiveButton("OK", null)
+                    .show()
+            }
             return@registerForActivityResult
         }
         pendingUri = null
@@ -69,25 +99,21 @@ class CaptureActivity : AppCompatActivity() {
         currentArea = null
     }
 
-    private fun handleCancelledCapture(area: OralArea) {
-        val latest = StorageUtil.latestImageAfter(this, captureStartedAt)
-        if (latest != null) {
-            AlertDialog.Builder(this)
-                .setTitle("Attach photo")
-                .setMessage(
-                    "The camera app saved your photo to its own gallery. " +
-                        "Attach it to '${area.name}'?"
-                )
-                .setPositiveButton("Attach") { _, _ ->
-                    attachPhotoFromGallery(area, latest)
-                }
-                .setNegativeButton("Retake") { _, _ ->
-                    launchCamera(area)
-                }
-                .setOnDismissListener { _ -> }
-                .show()
-        } else {
-            Toast.makeText(this, "Capture cancelled", Toast.LENGTH_SHORT).show()
+    private fun debugCancelledReason(
+        success: Boolean,
+        uri: Uri?,
+        photoInPlace: Boolean,
+        foundLatest: Boolean
+    ): String {
+        return buildString {
+            append("Capture debug:\n")
+            append("cameraResultOK=$success\n")
+            append("outputUriProvided=${uri != null}\n")
+            append("photoSavedToOurFolder=$photoInPlace\n")
+            append("newGalleryPhotoFound=$foundLatest\n")
+            append("elapsedSeconds=${(System.currentTimeMillis() - captureStartedAt) / 1000}\n")
+            append("androidSdk=${Build.VERSION.SDK_INT}\n")
+            append("Only why-cancelled info above helps debugging")
         }
     }
 
@@ -110,10 +136,10 @@ class CaptureActivity : AppCompatActivity() {
     }
 
     private fun photoWritten(uri: Uri?, filePath: String?): Boolean {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             if (uri == null) return false
             var cursor: Cursor? = null
-            return try {
+            try {
                 cursor = contentResolver.query(
                     uri,
                     arrayOf(MediaStore.Images.Media.SIZE),
@@ -121,15 +147,24 @@ class CaptureActivity : AppCompatActivity() {
                     null,
                     null
                 )
-                cursor != null && cursor.moveToFirst() && cursor.getLong(0) > 0L
+                if (cursor != null && cursor.moveToFirst() && cursor.getLong(0) > 0L) {
+                    return true
+                }
             } catch (e: Exception) {
-                false
+                // fall through to fd check below
             } finally {
                 cursor?.close()
             }
+            try {
+                contentResolver.openAssetFileDescriptor(uri, "r")?.use { fd ->
+                    return fd.length > 0L
+                } ?: return false
+            } catch (e: Exception) {
+                false
+            }
         } else {
             val file = filePath?.let { File(it) }
-            return file != null && file.exists() && file.length() > 0L
+            file != null && file.exists() && file.length() > 0L
         }
     }
 

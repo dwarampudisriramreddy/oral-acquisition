@@ -159,7 +159,15 @@ class CaptureActivity : AppCompatActivity() {
 
     private fun launchCamera(area: OralArea) {
         currentArea = area
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val granted = ContextCompat.checkSelfPermission(
+                this, Manifest.permission.READ_MEDIA_IMAGES
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                writePermissionLauncher.launch(Manifest.permission.READ_MEDIA_IMAGES)
+                return
+            }
+        } else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             val granted = ContextCompat.checkSelfPermission(
                 this, Manifest.permission.WRITE_EXTERNAL_STORAGE
             ) == PackageManager.PERMISSION_GRANTED

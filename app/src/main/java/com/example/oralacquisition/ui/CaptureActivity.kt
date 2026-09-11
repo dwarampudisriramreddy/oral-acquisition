@@ -51,15 +51,32 @@ class CaptureActivity : AppCompatActivity() {
         ActivityResultContracts.TakePicture()
     ) { success ->
         val area = currentArea ?: return@registerForActivityResult
-        val uri = pendingUri
-        val written = uri != null && photoWritten(uri, pendingFilePath)
+        var uri = pendingUri
+        var written = uri != null && photoWritten(uri, pendingFilePath)
         val folderFresh = StorageUtil.latestImageInFolder(this, captureStartedAt)
-        val savedInOurFolder = uri != null && (written || folderFresh)
+        var savedInOurFolder = uri != null && (written || folderFresh)
+
+        var finalPath = pendingFilePath
+
+        if (!success && !savedInOurFolder) {
+            val latest = StorageUtil.latestImageAfter(this, captureStartedAt)
+            if (latest != null && latest != uri) {
+                val copied = StorageUtil.copyPhotoIntoArea(this, patient.name, area.name, latest)
+                if (copied != null) {
+                    deletePhoto(uri, pendingFilePath)
+                    uri = copied.uri
+                    finalPath = copied.filePath
+                    written = true
+                    savedInOurFolder = true
+                }
+            }
+        }
+
         if (success || savedInOurFolder) {
             if (uri != null) {
                 StorageUtil.finalizeMediaStoreUri(this, uri)
                 area.photoUri = uri
-                area.photoPath = pendingFilePath ?: queryDataPath(uri)
+                area.photoPath = finalPath ?: queryDataPath(uri)
                 areaAdapter.notifyDataSetChanged()
                 Toast.makeText(this, "Photo saved to ${area.name}", Toast.LENGTH_SHORT).show()
             }

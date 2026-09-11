@@ -58,6 +58,14 @@ class MainActivity : AppCompatActivity() {
             startActivity(intent)
         }
 
+        binding.btnOpenGallery.setOnClickListener {
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                type = "image/*"
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            startActivity(Intent.createChooser(intent, "Open Gallery"))
+        }
+
         binding.rvGallery.layoutManager = GridLayoutManager(this, 3)
         galleryAdapter = GalleryAdapter(emptyList()) { item -> showPhotoPreview(item) }
         binding.rvGallery.adapter = galleryAdapter

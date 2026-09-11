@@ -26,15 +26,21 @@ class CaptureActivity : AppCompatActivity() {
     companion object {
         private val ORAL_AREAS = listOf(
             OralArea(1, "Upper Labial Mucosa"),
-            OralArea(2, "Lower Labial Mucosa"),
-            OralArea(3, "Right Buccal Mucosa"),
-            OralArea(4, "Left Buccal Mucosa"),
-            OralArea(5, "Palate"),
-            OralArea(6, "Tongue"),
-            OralArea(7, "Floor of the Mouth"),
-            OralArea(8, "Right Bite"),
-            OralArea(9, "Anterior Bite"),
-            OralArea(10, "Left Bite")
+            OralArea(2, "Lingual Labial Mucosa"),
+            OralArea(3, "Anterior Bite"),
+            OralArea(4, "Right Bite"),
+            OralArea(5, "Left Bite"),
+            OralArea(6, "Right Buccal Mucosa"),
+            OralArea(7, "Left Buccal Mucosa"),
+            OralArea(8, "Palate"),
+            OralArea(9, "Anterior Lingual"),
+            OralArea(10, "Floor of Mouth"),
+            OralArea(11, "Tongue Surface"),
+            OralArea(12, "Upper Right Retract"),
+            OralArea(13, "Upper Left Retract"),
+            OralArea(14, "Lower Left Retract"),
+            OralArea(15, "Lower Right Retract"),
+            OralArea(16, "Pathology")
         )
     }
 
@@ -63,7 +69,7 @@ class CaptureActivity : AppCompatActivity() {
         if (!written && !savedInOurFolder) {
             val latest = StorageUtil.latestImageAfter(this, captureStartedAt)
             if (latest != null && latest != uri) {
-                val copied = StorageUtil.copyPhotoIntoArea(this, patient.name, area.name, latest)
+                val copied = StorageUtil.copyPhotoIntoArea(this, "${patient.name}_${patient.opNumber}", area.name, latest)
                 if (copied != null) {
                     deletePhoto(uri, pendingFilePath)
                     uri = copied.uri
@@ -78,7 +84,7 @@ class CaptureActivity : AppCompatActivity() {
         if ((success || written) && uri != null) {
             // If it wasn't a recovered gallery photo, it's our temp file. Copy to MediaStore.
             if (!successfullyRecovered) {
-                val copied = StorageUtil.copyPhotoIntoArea(this, patient.name, area.name, uri)
+                val copied = StorageUtil.copyPhotoIntoArea(this, "${patient.name}_${patient.opNumber}", area.name, uri)
                 if (copied != null) {
                     deletePhoto(uri, pendingFilePath)
                     uri = copied.uri
@@ -165,6 +171,20 @@ class CaptureActivity : AppCompatActivity() {
 
         binding.rvAreas.layoutManager = LinearLayoutManager(this)
         binding.rvAreas.adapter = areaAdapter
+
+        binding.btnAddPathology.setOnClickListener {
+            val currentCount = areas.count { it.name.startsWith("Pathology") }
+            val newId = areas.maxOf { it.id } + 1
+            areas.add(OralArea(newId, "Pathology ${currentCount + 1}"))
+            areaAdapter.notifyItemInserted(areas.size - 1)
+            binding.rvAreas.scrollToPosition(areas.size - 1)
+        }
+
+        binding.btnSubmit.setOnClickListener {
+            val capturedCount = areas.count { it.photoUri != null }
+            Toast.makeText(this, "Session submitted with $capturedCount photos!", Toast.LENGTH_SHORT).show()
+            finish()
+        }
     }
 
     private fun launchCamera(area: OralArea) {
@@ -186,7 +206,7 @@ class CaptureActivity : AppCompatActivity() {
                 return
             }
         }
-        val location = StorageUtil.createTempPhotoLocation(this, patient.name, area.name)
+        val location = StorageUtil.createTempPhotoLocation(this, "${patient.name}_${patient.opNumber}", area.name)
         pendingUri = location.uri
         pendingFilePath = location.filePath
         captureStartedAt = System.currentTimeMillis()

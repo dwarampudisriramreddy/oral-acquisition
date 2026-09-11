@@ -38,34 +38,58 @@
             android:textColor="@color/text_secondary"
             android:textSize="14sp" />
 
-        <androidx.appcompat.widget.AppCompatEditText
-            android:id="@+id/etPatientName"
+        <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="32dp"
-            android:hint="Patient Name"
-            android:inputType="textPersonName"
-            android:maxLines="1"
-            android:textColor="@color/text_primary" />
+            style="@style/Widget.Material3.TextInputLayout.OutlinedBox">
+            
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/etPatientName"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Patient Name"
+                android:inputType="textPersonName"
+                android:maxLines="1"
+                android:textColor="@color/text_primary" />
+        </com.google.android.material.textfield.TextInputLayout>
 
-        <androidx.appcompat.widget.AppCompatEditText
-            android:id="@+id/etOpNumber"
+        <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:hint="OP Number"
-            android:inputType="textCapCharacters"
-            android:maxLines="1"
-            android:textColor="@color/text_primary" />
+            style="@style/Widget.Material3.TextInputLayout.OutlinedBox">
 
-        <androidx.appcompat.widget.AppCompatButton
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/etOpNumber"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="OP Number"
+                android:inputType="textCapCharacters"
+                android:maxLines="1"
+                android:textColor="@color/text_primary" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnStart"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="60dp"
             android:layout_marginTop="32dp"
-            android:padding="16dp"
             android:text="Start Capture"
-            android:textSize="16sp" />
+            android:textSize="16sp"
+            app:cornerRadius="12dp"
+            xmlns:app="http://schemas.android.com/apk/res-auto" />
+            
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnOpenGallery"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:layout_marginTop="8dp"
+            android:text="Open Device Gallery"
+            android:textSize="16sp"
+            style="@style/Widget.Material3.Button.TonalButton"
+            app:cornerRadius="12dp"
+            xmlns:app="http://schemas.android.com/apk/res-auto" />
 
         <TextView
             android:layout_width="match_parent"

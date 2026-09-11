@@ -49,9 +49,9 @@ object StorageUtil {
         patientName: String,
         areaName: String
     ): PhotoLocation {
-        val folder = File(context.getExternalFilesDir(null), "OralAcquisition/${sanitize(patientName)}/${sanitize(areaName)}")
+        val folder = File(context.getExternalFilesDir(null), "OralAcquisition/${sanitize(patientName)}")
         if (!folder.exists()) folder.mkdirs()
-        val file = File(folder, "${System.currentTimeMillis()}.jpg")
+        val file = File(folder, "${sanitize(areaName)}_${System.currentTimeMillis()}.jpg")
         return PhotoLocation(
             uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file),
             filePath = file.absolutePath
@@ -224,12 +224,16 @@ object StorageUtil {
     private fun labelFromPath(path: String): String {
         val segments = path.split("/").filter { it.isNotBlank() }
         val baseIndex = segments.indexOf(BASE_FOLDER_NAME)
-        if (baseIndex == -1) return BASE_FOLDER_NAME
-        var parts = segments.subList(baseIndex + 1, segments.size)
-        if (parts.isNotEmpty() && parts.last().contains('.')) {
-            parts = parts.subList(0, parts.size - 1)
+        if (baseIndex == -1) return path.substringAfterLast("/")
+        
+        val parts = segments.subList(baseIndex + 1, segments.size).toMutableList()
+        if (parts.isNotEmpty()) {
+            val last = parts.last()
+            if (last.contains('.')) {
+                parts[parts.size - 1] = last.substringBeforeLast('.')
+            }
         }
-        return if (parts.isEmpty()) BASE_FOLDER_NAME else parts.joinToString("/")
+        return parts.joinToString("/")
     }
 
     fun deletePhoto(context: Context, location: PhotoLocation) {
@@ -251,11 +255,11 @@ object StorageUtil {
             MediaStore.VOLUME_EXTERNAL_PRIMARY
         )
         val values = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, "${System.currentTimeMillis()}.jpg")
+            put(MediaStore.Images.Media.DISPLAY_NAME, "${sanitize(areaName)}_${System.currentTimeMillis()}.jpg")
             put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
             put(
                 MediaStore.Images.Media.RELATIVE_PATH,
-                "$BASE_PATH/${sanitize(patientName)}/${sanitize(areaName)}"
+                "$BASE_PATH/${sanitize(patientName)}"
             )
             put(MediaStore.Images.Media.IS_PENDING, 1)
         }
@@ -269,12 +273,12 @@ object StorageUtil {
     ): File {
         val folder = File(
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
-            "$BASE_PATH/${sanitize(patientName)}/${sanitize(areaName)}"
+            "$BASE_PATH/${sanitize(patientName)}"
         )
         if (!folder.exists()) {
             folder.mkdirs()
         }
-        return File(folder, "${System.currentTimeMillis()}.jpg")
+        return File(folder, "${sanitize(areaName)}_${System.currentTimeMillis()}.jpg")
     }
 
     private fun sanitize(name: String): String {

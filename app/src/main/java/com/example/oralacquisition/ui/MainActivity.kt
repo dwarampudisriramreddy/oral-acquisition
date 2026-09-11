@@ -9,8 +9,6 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.GridLayoutManager
@@ -18,11 +16,15 @@ import com.example.oralacquisition.adapter.GalleryAdapter
 import com.example.oralacquisition.data.Patient
 import com.example.oralacquisition.databinding.ActivityMainBinding
 import com.example.oralacquisition.util.StorageUtil
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
+import androidx.core.widget.doOnTextChanged
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var galleryAdapter: GalleryAdapter
+    private var allGalleryItems: List<StorageUtil.PhotoItem> = emptyList()
 
     private val readPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -66,6 +68,10 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent.createChooser(intent, "Open Gallery"))
         }
 
+        binding.etSearchGallery.doOnTextChanged { text, _, _, _ ->
+            filterGallery(text?.toString() ?: "")
+        }
+
         binding.rvGallery.layoutManager = GridLayoutManager(this, 3)
         galleryAdapter = GalleryAdapter(emptyList()) { item -> showPhotoPreview(item) }
         binding.rvGallery.adapter = galleryAdapter
@@ -74,6 +80,23 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         loadGallery()
+    }
+
+    private fun filterGallery(query: String) {
+        val filtered = if (query.isBlank()) {
+            allGalleryItems
+        } else {
+            val terms = query.lowercase().split(" ")
+            allGalleryItems.filter { item ->
+                val label = item.label.lowercase()
+                terms.all { term -> label.contains(term) }
+            }
+        }
+        binding.tvGalleryEmpty.visibility = if (filtered.isEmpty()) ViewGroup.VISIBLE else ViewGroup.GONE
+        binding.tvGalleryEmpty.text = if (allGalleryItems.isEmpty()) "No photos captured yet" else "No photos match your search"
+        
+        galleryAdapter = GalleryAdapter(filtered) { item -> showPhotoPreview(item) }
+        binding.rvGallery.adapter = galleryAdapter
     }
 
     private fun loadGallery() {
@@ -86,11 +109,8 @@ class MainActivity : AppCompatActivity() {
                 return
             }
         }
-        val items = StorageUtil.queryAllPhotos(this)
-        binding.tvGalleryEmpty.visibility =
-            if (items.isEmpty()) ViewGroup.VISIBLE else ViewGroup.GONE
-        galleryAdapter = GalleryAdapter(items) { item -> showPhotoPreview(item) }
-        binding.rvGallery.adapter = galleryAdapter
+        allGalleryItems = StorageUtil.queryAllPhotos(this)
+        filterGallery(binding.etSearchGallery.text?.toString() ?: "")
     }
 
     private fun showPhotoPreview(item: StorageUtil.PhotoItem) {

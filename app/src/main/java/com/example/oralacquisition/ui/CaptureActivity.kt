@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.provider.MediaStore
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -43,6 +44,7 @@ class CaptureActivity : AppCompatActivity() {
     private var currentArea: OralArea? = null
     private var pendingUri: Uri? = null
     private var pendingFilePath: String? = null
+    private var captureStartedAt = 0L
 
     private val takePictureLauncher = registerForActivityResult(
         ActivityResultContracts.TakePicture()
@@ -56,12 +58,55 @@ class CaptureActivity : AppCompatActivity() {
             areaAdapter.notifyDataSetChanged()
             Toast.makeText(this, "Photo captured for ${area.name}", Toast.LENGTH_SHORT).show()
         } else {
-            deletePhoto(uri, pendingFilePath)
-            Toast.makeText(this, "Capture cancelled", Toast.LENGTH_SHORT).show()
+            pendingUri = null
+            pendingFilePath = null
+            currentArea = null
+            handleCancelledCapture(area)
+            return@registerForActivityResult
         }
         pendingUri = null
         pendingFilePath = null
         currentArea = null
+    }
+
+    private fun handleCancelledCapture(area: OralArea) {
+        val latest = StorageUtil.latestImageAfter(this, captureStartedAt)
+        if (latest != null) {
+            AlertDialog.Builder(this)
+                .setTitle("Attach photo")
+                .setMessage(
+                    "The camera app saved your photo to its own gallery. " +
+                        "Attach it to '${area.name}'?"
+                )
+                .setPositiveButton("Attach") { _, _ ->
+                    attachPhotoFromGallery(area, latest)
+                }
+                .setNegativeButton("Retake") { _, _ ->
+                    launchCamera(area)
+                }
+                .setOnDismissListener { _ -> }
+                .show()
+        } else {
+            Toast.makeText(this, "Capture cancelled", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun attachPhotoFromGallery(area: OralArea, uri: Uri) {
+        val destination = StorageUtil.copyPhotoIntoArea(
+            this, patient.name, area.name, uri
+        )
+        if (destination != null) {
+            area.photoUri = destination.uri
+            area.photoPath = destination.filePath
+            areaAdapter.notifyDataSetChanged()
+            Toast.makeText(
+                this,
+                "Photo attached to ${area.name}",
+                Toast.LENGTH_SHORT
+            ).show()
+        } else {
+            Toast.makeText(this, "Could not attach the photo", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun photoWritten(uri: Uri?, filePath: String?): Boolean {
@@ -139,6 +184,7 @@ class CaptureActivity : AppCompatActivity() {
         val location = StorageUtil.createPhotoLocation(this, patient.name, area.name)
         pendingUri = location.uri
         pendingFilePath = location.filePath
+        captureStartedAt = System.currentTimeMillis()
         takePictureLauncher.launch(location.uri)
     }
 

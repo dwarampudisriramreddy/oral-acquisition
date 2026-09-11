@@ -53,6 +53,55 @@ object StorageUtil {
         }
     }
 
+    fun copyPhotoIntoArea(
+        context: Context,
+        patientName: String,
+        areaName: String,
+        sourceUri: Uri
+    ): PhotoLocation? {
+        val destination = createPhotoLocation(context, patientName, areaName)
+        val copied = runCatching {
+            val input = context.contentResolver.openInputStream(sourceUri) ?: return null
+            input.use { source ->
+                val output = context.contentResolver.openOutputStream(
+                    destination.uri, "w"
+                ) ?: throw IllegalStateException("Cannot open destination")
+                output.use { dest ->
+                    source.copyTo(dest)
+                }
+            }
+            true
+        }.getOrElse { false }
+        if (!copied) {
+            deletePhoto(context, destination)
+            return null
+        }
+        finalizeMediaStoreUri(context, destination.uri)
+        return destination
+    }
+
+    fun latestImageAfter(context: Context, afterMillis: Long): Uri? {
+        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        } else {
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        }
+        val selection = "${MediaStore.Images.Media.DATE_ADDED} >= ${afterMillis / 1000}"
+        return context.contentResolver.query(
+            collection,
+            arrayOf(MediaStore.Images.Media._ID),
+            selection,
+            null,
+            "${MediaStore.Images.Media.DATE_ADDED} DESC"
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                Uri.withAppendedPath(collection, cursor.getLong(0).toString())
+            } else {
+                null
+            }
+        }
+    }
+
     data class PhotoItem(
         val uri: Uri?,
         val filePath: String?,

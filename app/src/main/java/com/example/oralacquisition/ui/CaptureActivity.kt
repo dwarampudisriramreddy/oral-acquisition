@@ -96,6 +96,7 @@ class CaptureActivity : AppCompatActivity() {
             append("outputUriProvided=${uri != null}\n")
             append("photoFileHasData=$written\n")
             append("newPhotoInAppFolder=$folderFresh\n")
+            append("photoWrittenDebug=$photoWrittenDebug\n")
             append("elapsedSeconds=${(System.currentTimeMillis() - captureStartedAt) / 1000}\n")
             append("androidSdk=${Build.VERSION.SDK_INT}\n")
             append("Share these lines to debug")
@@ -157,9 +158,15 @@ class CaptureActivity : AppCompatActivity() {
         takePictureLauncher.launch(location.uri)
     }
 
+    private var photoWrittenDebug = ""
+
     private fun photoWritten(uri: Uri?, filePath: String?): Boolean {
+        photoWrittenDebug = ""
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            if (uri == null) return false
+            if (uri == null) {
+                photoWrittenDebug = "uri is null"
+                return false
+            }
             var cursor: Cursor? = null
             try {
                 cursor = contentResolver.query(
@@ -169,24 +176,42 @@ class CaptureActivity : AppCompatActivity() {
                     null,
                     null
                 )
-                if (cursor != null && cursor.moveToFirst() && cursor.getLong(0) > 0L) {
-                    return true
+                if (cursor != null && cursor.moveToFirst()) {
+                    val size = cursor.getLong(0)
+                    if (size > 0L) {
+                        return true
+                    } else {
+                        photoWrittenDebug += "cursor size is $size; "
+                    }
+                } else {
+                    photoWrittenDebug += "cursor is null or empty; "
                 }
             } catch (e: Exception) {
-                // fall through to fd check below
+                photoWrittenDebug += "cursor error: ${e.message}; "
             } finally {
                 cursor?.close()
             }
             try {
-                contentResolver.openAssetFileDescriptor(uri, "r")?.use { fd ->
-                    return fd.length > 0L
-                } ?: return false
+                contentResolver.openInputStream(uri)?.use { stream ->
+                    val hasData = stream.read() != -1
+                    if (!hasData) photoWrittenDebug += "stream empty; "
+                    return hasData
+                } ?: run {
+                    photoWrittenDebug += "openInputStream returned null; "
+                    return false
+                }
             } catch (e: Exception) {
+                photoWrittenDebug += "stream error: ${e.message}; "
                 false
             }
         } else {
             val file = filePath?.let { File(it) }
-            file != null && file.exists() && file.length() > 0L
+            val exists = file?.exists() == true
+            val length = file?.length() ?: -1L
+            if (!exists || length <= 0L) {
+                photoWrittenDebug = "file exists=$exists length=$length"
+            }
+            exists && length > 0L
         }
     }
 

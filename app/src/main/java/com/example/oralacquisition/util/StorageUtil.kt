@@ -165,7 +165,8 @@ object StorageUtil {
             collection,
             arrayOf(
                 MediaStore.Images.Media._ID,
-                MediaStore.Images.Media.RELATIVE_PATH
+                MediaStore.Images.Media.RELATIVE_PATH,
+                MediaStore.Images.Media.DISPLAY_NAME
             ),
             selection,
             selectionArgs,
@@ -177,11 +178,21 @@ object StorageUtil {
                 val relativePath = cursor.getString(
                     cursor.getColumnIndexOrThrow(MediaStore.Images.Media.RELATIVE_PATH)
                 ) ?: ""
+                val displayName = cursor.getString(
+                    cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
+                ) ?: ""
+                
+                val fullPath = if (relativePath.endsWith("/")) {
+                    relativePath + displayName
+                } else {
+                    relativePath + "/" + displayName
+                }
+                
                 items.add(
                     PhotoItem(
                         uri = Uri.withAppendedPath(collection, id.toString()),
                         filePath = null,
-                        label = labelFromPath(relativePath)
+                        label = labelFromPath(fullPath)
                     )
                 )
             }

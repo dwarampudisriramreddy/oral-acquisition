@@ -7,8 +7,10 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -50,10 +52,9 @@ class CaptureActivity : AppCompatActivity() {
     ) { success ->
         val area = currentArea ?: return@registerForActivityResult
         val uri = pendingUri
-        val savedInOurFolder = uri != null && (
-            photoWritten(uri, pendingFilePath) ||
-                StorageUtil.latestImageInFolder(this, captureStartedAt)
-            )
+        val written = uri != null && photoWritten(uri, pendingFilePath)
+        val folderFresh = StorageUtil.latestImageInFolder(this, captureStartedAt)
+        val savedInOurFolder = uri != null && (written || folderFresh)
         if (success || savedInOurFolder) {
             if (uri != null) {
                 StorageUtil.finalizeMediaStoreUri(this, uri)
@@ -63,13 +64,42 @@ class CaptureActivity : AppCompatActivity() {
                 Toast.makeText(this, "Photo saved to ${area.name}", Toast.LENGTH_SHORT).show()
             }
         } else {
+            val debug = buildCancelledDebug(
+                success = success,
+                uri = uri,
+                written = written,
+                folderFresh = folderFresh
+            )
+            Log.w("OralCapture", debug)
             deletePhoto(uri, pendingFilePath)
-            Toast.makeText(this, "Capture cancelled", Toast.LENGTH_SHORT).show()
+            AlertDialog.Builder(this)
+                .setTitle("Capture cancelled")
+                .setMessage(debug)
+                .setPositiveButton("OK", null)
+                .show()
         }
         pendingUri = null
         pendingFilePath = null
         currentArea = null
         captureStartedAt = 0L
+    }
+
+    private fun buildCancelledDebug(
+        success: Boolean,
+        uri: Uri?,
+        written: Boolean,
+        folderFresh: Boolean
+    ): String {
+        return buildString {
+            append("Capture debug:\n")
+            append("cameraResultOK=$success\n")
+            append("outputUriProvided=${uri != null}\n")
+            append("photoFileHasData=$written\n")
+            append("newPhotoInAppFolder=$folderFresh\n")
+            append("elapsedSeconds=${(System.currentTimeMillis() - captureStartedAt) / 1000}\n")
+            append("androidSdk=${Build.VERSION.SDK_INT}\n")
+            append("Share these lines to debug")
+        }
     }
 
     private val writePermissionLauncher = registerForActivityResult(

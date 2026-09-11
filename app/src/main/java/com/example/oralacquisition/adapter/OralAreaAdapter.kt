@@ -45,6 +45,26 @@ class OralAreaAdapter(
 
             binding.btnCapture.setOnClickListener { onCapture(area) }
             binding.btnRemove.setOnClickListener { onRemove(area) }
+            
+            binding.ivAreaThumb.setOnClickListener {
+                if (area.photoUri != null) {
+                    val context = binding.root.context
+                    val imageView = android.widget.ImageView(context).apply {
+                        layoutParams = android.widget.LinearLayout.LayoutParams(
+                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                            android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+                        )
+                        scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+                        setPadding(0, 32, 0, 0)
+                        setImageURI(area.photoUri)
+                    }
+                    androidx.appcompat.app.AlertDialog.Builder(context)
+                        .setTitle(area.name)
+                        .setView(imageView)
+                        .setPositiveButton("Close", null)
+                        .show()
+                }
+            }
         }
     }
 }

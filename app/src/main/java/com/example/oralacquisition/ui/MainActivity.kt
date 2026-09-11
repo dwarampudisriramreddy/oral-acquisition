@@ -59,6 +59,14 @@ class MainActivity : AppCompatActivity() {
             intent.putExtra("patient", patient)
             startActivity(intent)
         }
+        
+        binding.btnClear.setOnClickListener {
+            binding.etPatientName.text?.clear()
+            binding.etPatientName.error = null
+            binding.etOpNumber.text?.clear()
+            binding.etOpNumber.error = null
+            binding.etPatientName.requestFocus()
+        }
 
         binding.btnOpenGallery.setOnClickListener {
             val intent = Intent(Intent.ACTION_VIEW).apply {

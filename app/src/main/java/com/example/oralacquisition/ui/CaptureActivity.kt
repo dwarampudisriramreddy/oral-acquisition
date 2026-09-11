@@ -34,9 +34,9 @@ class CaptureActivity : AppCompatActivity() {
             OralArea(7, "Right Buccal Mucosa"),
             OralArea(8, "Left Buccal Mucosa"),
             OralArea(9, "Palate"),
-            OralArea(10, "Anterior Lingual"),
+            OralArea(10, "Upper Lingual"),
             OralArea(11, "Floor of Mouth"),
-            OralArea(12, "Lingual"),
+            OralArea(12, "Lower Lingual"),
             OralArea(13, "Tongue Surface"),
             OralArea(14, "Upper Right Retract"),
             OralArea(15, "Upper Left Retract"),
@@ -164,6 +164,12 @@ class CaptureActivity : AppCompatActivity() {
 
         binding.toolbar.title = "Capture Photos"
         binding.toolbar.setTitleTextColor(resources.getColor(android.R.color.white, null))
+        setSupportActionBar(binding.toolbar)
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        binding.toolbar.setNavigationOnClickListener {
+            // Cancel session and return to main
+            finish()
+        }
 
         areaAdapter = OralAreaAdapter(
             areas = areas,

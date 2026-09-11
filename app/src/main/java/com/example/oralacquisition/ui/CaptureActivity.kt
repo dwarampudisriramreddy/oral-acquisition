@@ -6,6 +6,8 @@ import android.database.Cursor
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import android.util.Log
 import android.widget.Toast
@@ -46,6 +48,19 @@ class CaptureActivity : AppCompatActivity() {
     private var pendingUri: Uri? = null
     private var pendingFilePath: String? = null
     private var captureStartedAt = 0L
+    private var pendingAttachArea: OralArea? = null
+    private var lastCancelDebug = ""
+    private val handler = Handler(Looper.getMainLooper())
+
+    private val pickPhotoLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        val area = pendingAttachArea
+        pendingAttachArea = null
+        if (area != null && uri != null) {
+            attachPhotoFromGallery(area, uri)
+        }
+    }
 
     private val takePictureLauncher = registerForActivityResult(
         ActivityResultContracts.TakePicture()
@@ -59,44 +74,72 @@ class CaptureActivity : AppCompatActivity() {
             area.photoPath = pendingFilePath ?: queryDataPath(uri)
             areaAdapter.notifyDataSetChanged()
             Toast.makeText(this, "Photo captured for ${area.name}", Toast.LENGTH_SHORT).show()
-        } else {
-            val foundLatest = StorageUtil.latestImageAfter(this, captureStartedAt)
-            val debug = debugCancelledReason(
-                success = success,
-                uri = uri,
-                photoInPlace = photoInPlace,
-                foundLatest = foundLatest != null
-            )
-            Log.w("OralCapture", debug)
             pendingUri = null
             pendingFilePath = null
             currentArea = null
-            if (foundLatest != null) {
-                AlertDialog.Builder(this)
-                    .setTitle("Attach photo")
-                    .setMessage(
-                        "$debug\n\nATTACH the photo the camera saved to its gallery to " +
-                            "'${area.name}'?"
-                    )
-                    .setPositiveButton("Attach") { _, _ ->
-                        attachPhotoFromGallery(area, foundLatest)
-                    }
-                    .setNegativeButton("Retake") { _, _ ->
-                        launchCamera(area)
-                    }
-                    .show()
-            } else {
-                AlertDialog.Builder(this)
-                    .setTitle("Capture cancelled")
-                    .setMessage(debug)
-                    .setPositiveButton("OK", null)
-                    .show()
-            }
-            return@registerForActivityResult
+        } else {
+            lastCancelDebug = debugCancelledReason(
+                success = success,
+                uri = uri,
+                photoInPlace = photoInPlace,
+                foundLatest = false
+            )
+            Log.w("OralCapture", lastCancelDebug)
+            pendingUri = null
+            pendingFilePath = null
+            currentArea = null
+            pendingAttachArea = area
+            pollForNewPhoto(area, 0)
         }
-        pendingUri = null
-        pendingFilePath = null
-        currentArea = null
+    }
+
+    private fun pollForNewPhoto(area: OralArea, attempt: Int) {
+        if (pendingAttachArea !== area) return
+        val found = StorageUtil.latestImageAfter(this, captureStartedAt)
+        if (found != null) {
+            showAttachDialog(area, found)
+            return
+        }
+        if (attempt >= 4) {
+            showNoPhotoDialog(area)
+            return
+        }
+        handler.postDelayed({ pollForNewPhoto(area, attempt + 1) }, 2000)
+    }
+
+    private fun showAttachDialog(area: OralArea, uri: Uri) {
+        AlertDialog.Builder(this)
+            .setTitle("Photo found")
+            .setMessage(
+                "$lastCancelDebug\nnewGalleryPhotoFound=true\n\n" +
+                    "ATTACH the photo the camera saved to its gallery to '${area.name}'?"
+            )
+            .setPositiveButton("Attach") { _, _ -> attachPhotoFromGallery(area, uri) }
+            .setNegativeButton("Retake") { _, _ -> retake(area) }
+            .show()
+    }
+
+    private fun showNoPhotoDialog(area: OralArea) {
+        AlertDialog.Builder(this)
+            .setTitle("Capture cancelled")
+            .setMessage(
+                "$lastCancelDebug\nnewGalleryPhotoFound=false\n\n" +
+                    "No new photo was found after 8s." +
+                    "\nChoose 'Gallery' to attach any photo, or Retake."
+            )
+            .setPositiveButton("Gallery") { _, _ ->
+                pendingAttachArea = area
+                pickPhotoLauncher.launch("image/*")
+            }
+            .setNegativeButton("Retake") { _, _ -> retake(area) }
+            .show()
+    }
+
+    private fun retake(area: OralArea) {
+        if (pendingAttachArea === area) {
+            pendingAttachArea = null
+        }
+        launchCamera(area)
     }
 
     private fun debugCancelledReason(

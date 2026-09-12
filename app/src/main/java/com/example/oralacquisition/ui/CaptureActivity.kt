@@ -99,19 +99,8 @@ class CaptureActivity : AppCompatActivity() {
             areaAdapter.notifyDataSetChanged()
             Toast.makeText(this, "Photo saved to ${area.name}", Toast.LENGTH_SHORT).show()
         } else {
-            val debug = buildCancelledDebug(
-                success = success,
-                uri = uri,
-                written = written,
-                folderFresh = folderFresh
-            )
-            Log.w("OralCapture", debug)
             deletePhoto(uri, pendingFilePath)
-            AlertDialog.Builder(this)
-                .setTitle("Capture cancelled")
-                .setMessage(debug)
-                .setPositiveButton("OK", null)
-                .show()
+            Toast.makeText(this, "Capture cancelled", Toast.LENGTH_SHORT).show()
         }
         pendingUri = null
         pendingFilePath = null
@@ -150,6 +139,31 @@ class CaptureActivity : AppCompatActivity() {
         }
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        val areaIds = ArrayList<Int>()
+        val areaUris = ArrayList<String>()
+        val areaPaths = ArrayList<String>()
+        val areaNames = ArrayList<String>()
+        
+        for (area in areas) {
+            areaIds.add(area.id)
+            areaNames.add(area.name)
+            areaUris.add(area.photoUri?.toString() ?: "")
+            areaPaths.add(area.photoPath ?: "")
+        }
+        
+        outState.putIntegerArrayList("areaIds", areaIds)
+        outState.putStringArrayList("areaNames", areaNames)
+        outState.putStringArrayList("areaUris", areaUris)
+        outState.putStringArrayList("areaPaths", areaPaths)
+        
+        outState.putInt("currentAreaId", currentArea?.id ?: -1)
+        outState.putString("pendingUri", pendingUri?.toString())
+        outState.putString("pendingFilePath", pendingFilePath)
+        outState.putLong("captureStartedAt", captureStartedAt)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityCaptureBinding.inflate(layoutInflater)
@@ -158,6 +172,42 @@ class CaptureActivity : AppCompatActivity() {
         @Suppress("DEPRECATION")
         patient = intent.getSerializableExtra("patient") as? Patient
             ?: Patient(name = "Unknown", opNumber = "Unknown")
+            
+        if (savedInstanceState != null) {
+            val areaIds = savedInstanceState.getIntegerArrayList("areaIds")
+            val areaNames = savedInstanceState.getStringArrayList("areaNames")
+            val areaUris = savedInstanceState.getStringArrayList("areaUris")
+            val areaPaths = savedInstanceState.getStringArrayList("areaPaths")
+            
+            if (areaIds != null && areaNames != null && areaUris != null && areaPaths != null) {
+                areas.clear()
+                for (i in areaIds.indices) {
+                    val uriStr = areaUris[i]
+                    val pathStr = areaPaths[i]
+                    areas.add(
+                        OralArea(
+                            id = areaIds[i],
+                            name = areaNames[i],
+                            photoUri = if (uriStr.isNotEmpty()) Uri.parse(uriStr) else null,
+                            photoPath = if (pathStr.isNotEmpty()) pathStr else null
+                        )
+                    )
+                }
+            }
+            
+            val currentAreaId = savedInstanceState.getInt("currentAreaId", -1)
+            if (currentAreaId != -1) {
+                currentArea = areas.find { it.id == currentAreaId }
+            }
+            
+            val pendingUriStr = savedInstanceState.getString("pendingUri")
+            if (pendingUriStr != null) {
+                pendingUri = Uri.parse(pendingUriStr)
+            }
+            
+            pendingFilePath = savedInstanceState.getString("pendingFilePath")
+            captureStartedAt = savedInstanceState.getLong("captureStartedAt", 0L)
+        }
 
         binding.tvPatientName.text = "Patient: ${patient.name}"
         binding.tvOpNumber.text = "OP Number: ${patient.opNumber}"

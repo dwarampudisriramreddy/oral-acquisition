@@ -5,6 +5,7 @@ import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import com.example.oralacquisition.databinding.ItemGalleryBinding
 import com.example.oralacquisition.util.StorageUtil
+import com.example.oralacquisition.util.ThumbLoader
 
 class GalleryAdapter(
     private val items: List<StorageUtil.PhotoItem>,
@@ -29,7 +30,9 @@ class GalleryAdapter(
     ) : RecyclerView.ViewHolder(binding.root) {
 
         fun bind(item: StorageUtil.PhotoItem) {
-            item.uri?.let { binding.ivGalleryThumb.setImageURI(it) }
+            ThumbLoader.load(
+                binding.root.context, binding.ivGalleryThumb, item.uri, 160
+            )
             binding.tvGalleryLabel.text = item.label
             binding.root.setOnClickListener { onItemClick(item) }
         }

@@ -153,8 +153,17 @@ class MainActivity : AppCompatActivity() {
                 return
             }
         }
-        allGalleryItems = StorageUtil.queryAllPhotos(this)
-        filterGallery(binding.etSearchGallery.text?.toString() ?: "")
+        
+        binding.tvGalleryEmpty.visibility = ViewGroup.VISIBLE
+        binding.tvGalleryEmpty.text = "Loading photos..."
+        
+        Thread {
+            val items = StorageUtil.queryAllPhotos(this)
+            runOnUiThread {
+                allGalleryItems = items
+                filterGallery(binding.etSearchGallery.text?.toString() ?: "")
+            }
+        }.start()
     }
 
     private fun showPhotoPreview(item: StorageUtil.PhotoItem) {

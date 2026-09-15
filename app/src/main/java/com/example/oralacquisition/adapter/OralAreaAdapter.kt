@@ -6,11 +6,13 @@ import androidx.recyclerview.widget.RecyclerView
 import com.example.oralacquisition.R
 import com.example.oralacquisition.data.OralArea
 import com.example.oralacquisition.databinding.ItemOralAreaBinding
+import com.example.oralacquisition.util.ThumbLoader
 
 class OralAreaAdapter(
     private val areas: List<OralArea>,
     private val onCapture: (OralArea) -> Unit,
-    private val onRemove: (OralArea) -> Unit
+    private val onRemove: (OralArea) -> Unit,
+    private val onAddExtra: (OralArea) -> Unit
 ) : RecyclerView.Adapter<OralAreaAdapter.OralAreaViewHolder>() {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): OralAreaViewHolder {
@@ -34,17 +36,22 @@ class OralAreaAdapter(
             binding.tvAreaName.text = area.name
 
             if (area.photoUri != null) {
-                binding.ivAreaThumb.setImageURI(area.photoUri)
+                ThumbLoader.load(
+                    binding.root.context, binding.ivAreaThumb, area.photoUri, 140
+                )
                 binding.btnCapture.text = "Retake"
                 binding.btnRemove.visibility = ViewGroup.VISIBLE
+                binding.btnAddExtra.visibility = ViewGroup.VISIBLE
             } else {
                 binding.ivAreaThumb.setImageResource(R.drawable.ic_camera_placeholder)
                 binding.btnCapture.text = "Capture"
                 binding.btnRemove.visibility = ViewGroup.GONE
+                binding.btnAddExtra.visibility = ViewGroup.GONE
             }
 
             binding.btnCapture.setOnClickListener { onCapture(area) }
             binding.btnRemove.setOnClickListener { onRemove(area) }
+            binding.btnAddExtra.setOnClickListener { onAddExtra(area) }
             
             binding.ivAreaThumb.setOnClickListener {
                 if (area.photoUri != null) {

@@ -9,10 +9,8 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
-import android.util.Log
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -57,89 +55,75 @@ class CaptureActivity : AppCompatActivity() {
     private var pendingUri: Uri? = null
     private var pendingFilePath: String? = null
     private var captureStartedAt = 0L
+    private var sessionDiscarded = false
 
     private val takePictureLauncher = registerForActivityResult(
         ActivityResultContracts.TakePicture()
     ) { success ->
         val area = currentArea ?: return@registerForActivityResult
-        var uri = pendingUri
-        var written = uri != null && photoWritten(uri, pendingFilePath)
-        val folderFresh = StorageUtil.latestImageInFolder(this, captureStartedAt)
-        var savedInOurFolder = uri != null && (written || folderFresh)
-
-        var finalPath = pendingFilePath
-        var successfullyRecovered = false
-
-        // Fallback: camera app completely ignored our output file and saved to its own gallery
-        if (!written && !savedInOurFolder) {
-            val latest = StorageUtil.latestImageAfter(this, captureStartedAt)
-            if (latest != null && latest != uri) {
-                val copied = StorageUtil.copyPhotoIntoArea(this, "${patient.name}_${patient.opNumber}", area.name, latest)
-                if (copied != null) {
-                    deletePhoto(uri, pendingFilePath)
-                    uri = copied.uri
-                    finalPath = copied.filePath
-                    written = true
-                    savedInOurFolder = true
-                    successfullyRecovered = true
-                }
-            }
-        }
-
-        if ((success || written) && uri != null) {
-            // If it wasn't a recovered gallery photo, it's our temp file. Copy to MediaStore.
-            if (!successfullyRecovered) {
-                val copied = StorageUtil.copyPhotoIntoArea(this, "${patient.name}_${patient.opNumber}", area.name, uri)
-                if (copied != null) {
-                    deletePhoto(uri, pendingFilePath)
-                    uri = copied.uri
-                    finalPath = copied.filePath
-                }
-            }
-            StorageUtil.finalizeMediaStoreUri(this, uri)
-            area.photoUri = uri
-            area.photoPath = finalPath ?: queryDataPath(uri)
-            areaAdapter.notifyDataSetChanged()
-            Toast.makeText(this, "Photo saved to ${area.name}", Toast.LENGTH_SHORT).show()
-            saveSession()
-        } else {
-            deletePhoto(uri, pendingFilePath)
-            val debug = buildCancelledDebug(
-                success = success,
-                uri = uri,
-                written = written,
-                folderFresh = folderFresh
-            )
-            Log.w("OralCapture", debug)
-            AlertDialog.Builder(this)
-                .setTitle("Capture cancelled")
-                .setMessage(debug)
-                .setPositiveButton("OK", null)
-                .show()
-        }
+        val u = pendingUri
+        val path = pendingFilePath
+        val startedAt = captureStartedAt
+        
         pendingUri = null
         pendingFilePath = null
         currentArea = null
         captureStartedAt = 0L
-    }
-
-    private fun buildCancelledDebug(
-        success: Boolean,
-        uri: Uri?,
-        written: Boolean,
-        folderFresh: Boolean
-    ): String {
-        return buildString {
-            append("Capture debug:\n")
-            append("cameraResultOK=$success\n")
-            append("outputUriProvided=${uri != null}\n")
-            append("photoFileHasData=$written\n")
-            append("newPhotoInAppFolder=$folderFresh\n")
-            append("photoWrittenDebug=$photoWrittenDebug\n")
-            append("elapsedSeconds=${(System.currentTimeMillis() - captureStartedAt) / 1000}\n")
-            append("androidSdk=${Build.VERSION.SDK_INT}\n")
-            append("Share these lines to debug")
-        }
+        
+        binding.toolbar.title = "Saving photo..."
+        
+        Thread {
+            var uri = u
+            var finalPath = path
+            var written = uri != null && photoWritten(uri, path)
+            val folderFresh = StorageUtil.latestImageInFolder(this, startedAt)
+            var savedInOurFolder = uri != null && (written || folderFresh)
+    
+            var successfullyRecovered = false
+    
+            if (!written && !savedInOurFolder) {
+                val latest = StorageUtil.latestImageAfter(this, startedAt)
+                if (latest != null && latest != uri) {
+                    val copied = StorageUtil.copyPhotoIntoArea(this, "${patient.name}_${patient.opNumber}", area.name, latest)
+                    if (copied != null) {
+                        deletePhoto(uri, path)
+                        uri = copied.uri
+                        finalPath = copied.filePath
+                        written = true
+                        savedInOurFolder = true
+                        successfullyRecovered = true
+                    }
+                }
+            }
+    
+            if ((success || written) && uri != null) {
+                if (!successfullyRecovered) {
+                    val copied = StorageUtil.copyPhotoIntoArea(this, "${patient.name}_${patient.opNumber}", area.name, uri)
+                    if (copied != null) {
+                        deletePhoto(uri, path)
+                        uri = copied.uri
+                        finalPath = copied.filePath
+                    }
+                }
+                StorageUtil.finalizeMediaStoreUri(this, uri)
+                val resolvedPath = finalPath ?: queryDataPath(uri)
+                
+                runOnUiThread {
+                    area.photoUri = uri
+                    area.photoPath = resolvedPath
+                    areaAdapter.notifyDataSetChanged()
+                    Toast.makeText(this, "Photo saved to ${area.name}", Toast.LENGTH_SHORT).show()
+                    binding.toolbar.title = "Capture Photos"
+                    runCatching { saveSession() }
+                }
+            } else {
+                runOnUiThread {
+                    deletePhoto(uri, path)
+                    Toast.makeText(this, "Capture cancelled", Toast.LENGTH_SHORT).show()
+                    binding.toolbar.title = "Capture Photos"
+                }
+            }
+        }.start()
     }
 
     private val writePermissionLauncher = registerForActivityResult(
@@ -241,6 +225,7 @@ class CaptureActivity : AppCompatActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         binding.toolbar.setNavigationOnClickListener {
             // Cancel session and return to main
+            sessionDiscarded = true
             SessionStore.clear(this)
             finish()
         }
@@ -248,7 +233,23 @@ class CaptureActivity : AppCompatActivity() {
         areaAdapter = OralAreaAdapter(
             areas = areas,
             onCapture = { area -> launchCamera(area) },
-            onRemove = { area -> removePhoto(area) }
+            onRemove = { area -> removePhoto(area) },
+            onAddExtra = { area ->
+                val baseNameRegex = Regex("^(.*?)(?:\\s+\\d+)?$")
+                val match = baseNameRegex.find(area.name)
+                val baseName = match?.groupValues?.get(1)?.trim() ?: area.name
+                
+                val currentCount = areas.count { it.name.startsWith(baseName) }
+                val newId = if (areas.isNotEmpty()) areas.maxOf { it.id } + 1 else 1
+                
+                val insertIndex = areas.indexOf(area) + 1
+                val newArea = OralArea(newId, "$baseName ${currentCount + 1}")
+                areas.add(insertIndex, newArea)
+                areaAdapter.notifyItemInserted(insertIndex)
+                binding.rvAreas.scrollToPosition(insertIndex)
+                
+                launchCamera(newArea)
+            }
         )
 
         binding.rvAreas.layoutManager = LinearLayoutManager(this)
@@ -266,6 +267,7 @@ class CaptureActivity : AppCompatActivity() {
         binding.btnSubmit.setOnClickListener {
             val capturedCount = areas.count { it.photoUri != null }
             Toast.makeText(this, "Session submitted with $capturedCount photos!", Toast.LENGTH_SHORT).show()
+            sessionDiscarded = true
             SessionStore.clear(this)
             finish()
         }
@@ -273,10 +275,13 @@ class CaptureActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
-        saveSession()
+        if (!sessionDiscarded) {
+            saveSession()
+        }
     }
 
     override fun onBackPressed() {
+        sessionDiscarded = true
         SessionStore.clear(this)
         super.onBackPressed()
     }
@@ -311,13 +316,9 @@ class CaptureActivity : AppCompatActivity() {
         takePictureLauncher.launch(location.uri)
     }
 
-    private var photoWrittenDebug = ""
-
     private fun photoWritten(uri: Uri?, filePath: String?): Boolean {
-        photoWrittenDebug = ""
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             if (uri == null) {
-                photoWrittenDebug = "uri is null"
                 return false
             }
             var cursor: Cursor? = null
@@ -330,41 +331,25 @@ class CaptureActivity : AppCompatActivity() {
                     null
                 )
                 if (cursor != null && cursor.moveToFirst()) {
-                    val size = cursor.getLong(0)
-                    if (size > 0L) {
+                    if (cursor.getLong(0) > 0L) {
                         return true
-                    } else {
-                        photoWrittenDebug += "cursor size is $size; "
                     }
-                } else {
-                    photoWrittenDebug += "cursor is null or empty; "
                 }
             } catch (e: Exception) {
-                photoWrittenDebug += "cursor error: ${e.message}; "
+                // fall through to stream check below
             } finally {
                 cursor?.close()
             }
             try {
                 contentResolver.openInputStream(uri)?.use { stream ->
-                    val hasData = stream.read() != -1
-                    if (!hasData) photoWrittenDebug += "stream empty; "
-                    return hasData
-                } ?: run {
-                    photoWrittenDebug += "openInputStream returned null; "
-                    return false
-                }
+                    stream.read() != -1
+                } ?: false
             } catch (e: Exception) {
-                photoWrittenDebug += "stream error: ${e.message}; "
                 false
             }
         } else {
             val file = filePath?.let { File(it) }
-            val exists = file?.exists() == true
-            val length = file?.length() ?: -1L
-            if (!exists || length <= 0L) {
-                photoWrittenDebug = "file exists=$exists length=$length"
-            }
-            exists && length > 0L
+            file != null && file.exists() && file.length() > 0L
         }
     }
 

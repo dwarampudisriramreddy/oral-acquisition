@@ -15,6 +15,7 @@ import androidx.recyclerview.widget.GridLayoutManager
 import com.example.oralacquisition.adapter.GalleryAdapter
 import com.example.oralacquisition.data.Patient
 import com.example.oralacquisition.databinding.ActivityMainBinding
+import com.example.oralacquisition.util.SessionStore
 import com.example.oralacquisition.util.StorageUtil
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
@@ -41,9 +42,33 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        if (savedInstanceState == null && SessionStore.isFresh(this)) {
+            val session = SessionStore.load(this)
+            if (session != null) {
+                AlertDialog.Builder(this)
+                    .setTitle("Unfinished session")
+                    .setMessage(
+                        "Resume capture for ${session.patient.name} " +
+                            "(${session.patient.opNumber}) with " +
+                            "${session.areas.count { it.photoUri != null }} of " +
+                            "${session.areas.size} photos captured?"
+                    )
+                    .setPositiveButton("Resume") { _, _ ->
+                        val intent = Intent(this, CaptureActivity::class.java)
+                        intent.putExtra("patient", session.patient)
+                        startActivity(intent)
+                    }
+                    .setNegativeButton("Start New") { _, _ ->
+                        SessionStore.clear(this)
+                    }
+                    .show()
+            }
+        }
+
         binding.btnStart.setOnClickListener {
             val name = binding.etPatientName.text.toString().trim()
             val opNumber = binding.etOpNumber.text.toString().trim()
+            val age = binding.etAge.text.toString().trim()
 
             if (name.isEmpty()) {
                 binding.etPatientName.error = "Patient name is required"
@@ -53,8 +78,17 @@ class MainActivity : AppCompatActivity() {
                 binding.etOpNumber.error = "OP number is required"
                 return@setOnClickListener
             }
+            if (age.isEmpty()) {
+                binding.etAge.error = "Age is required"
+                return@setOnClickListener
+            }
+            val ageInt = age.toIntOrNull()
+            if (ageInt == null || ageInt < 0 || ageInt > 130) {
+                binding.etAge.error = "Enter a valid age"
+                return@setOnClickListener
+            }
 
-            val patient = Patient(name = name, opNumber = opNumber)
+            val patient = Patient(name = name, opNumber = opNumber, age = age)
             val intent = Intent(this, CaptureActivity::class.java)
             intent.putExtra("patient", patient)
             startActivity(intent)
@@ -65,6 +99,8 @@ class MainActivity : AppCompatActivity() {
             binding.etPatientName.error = null
             binding.etOpNumber.text?.clear()
             binding.etOpNumber.error = null
+            binding.etAge.text?.clear()
+            binding.etAge.error = null
             binding.etPatientName.requestFocus()
         }
 

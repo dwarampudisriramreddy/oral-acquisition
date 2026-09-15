@@ -6,6 +6,8 @@ import android.database.Cursor
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import android.util.Log
 import android.widget.Toast
@@ -19,6 +21,7 @@ import com.example.oralacquisition.data.OralArea
 import com.example.oralacquisition.data.Patient
 import com.example.oralacquisition.databinding.ActivityCaptureBinding
 import com.example.oralacquisition.util.StorageUtil
+import com.example.oralacquisition.util.SessionStore
 import java.io.File
 
 class CaptureActivity : AppCompatActivity() {
@@ -98,9 +101,21 @@ class CaptureActivity : AppCompatActivity() {
             area.photoPath = finalPath ?: queryDataPath(uri)
             areaAdapter.notifyDataSetChanged()
             Toast.makeText(this, "Photo saved to ${area.name}", Toast.LENGTH_SHORT).show()
+            saveSession()
         } else {
             deletePhoto(uri, pendingFilePath)
-            Toast.makeText(this, "Capture cancelled", Toast.LENGTH_SHORT).show()
+            val debug = buildCancelledDebug(
+                success = success,
+                uri = uri,
+                written = written,
+                folderFresh = folderFresh
+            )
+            Log.w("OralCapture", debug)
+            AlertDialog.Builder(this)
+                .setTitle("Capture cancelled")
+                .setMessage(debug)
+                .setPositiveButton("OK", null)
+                .show()
         }
         pendingUri = null
         pendingFilePath = null
@@ -172,6 +187,14 @@ class CaptureActivity : AppCompatActivity() {
         @Suppress("DEPRECATION")
         patient = intent.getSerializableExtra("patient") as? Patient
             ?: Patient(name = "Unknown", opNumber = "Unknown")
+
+        if (savedInstanceState == null) {
+            SessionStore.load(this)?.let { session ->
+                patient = session.patient
+                areas.clear()
+                areas.addAll(session.areas)
+            }
+        }
             
         if (savedInstanceState != null) {
             val areaIds = savedInstanceState.getIntegerArrayList("areaIds")
@@ -210,7 +233,7 @@ class CaptureActivity : AppCompatActivity() {
         }
 
         binding.tvPatientName.text = "Patient: ${patient.name}"
-        binding.tvOpNumber.text = "OP Number: ${patient.opNumber}"
+        binding.tvOpNumber.text = "OP Number: ${patient.opNumber}  |  Age: ${patient.age}"
 
         binding.toolbar.title = "Capture Photos"
         binding.toolbar.setTitleTextColor(resources.getColor(android.R.color.white, null))
@@ -218,6 +241,7 @@ class CaptureActivity : AppCompatActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         binding.toolbar.setNavigationOnClickListener {
             // Cancel session and return to main
+            SessionStore.clear(this)
             finish()
         }
 
@@ -236,13 +260,29 @@ class CaptureActivity : AppCompatActivity() {
             areas.add(OralArea(newId, "Pathology ${currentCount + 1}"))
             areaAdapter.notifyItemInserted(areas.size - 1)
             binding.rvAreas.scrollToPosition(areas.size - 1)
+            saveSession()
         }
 
         binding.btnSubmit.setOnClickListener {
             val capturedCount = areas.count { it.photoUri != null }
             Toast.makeText(this, "Session submitted with $capturedCount photos!", Toast.LENGTH_SHORT).show()
+            SessionStore.clear(this)
             finish()
         }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        saveSession()
+    }
+
+    override fun onBackPressed() {
+        SessionStore.clear(this)
+        super.onBackPressed()
+    }
+
+    private fun saveSession() {
+        SessionStore.save(this, patient.name, patient.opNumber, patient.age, areas)
     }
 
     private fun launchCamera(area: OralArea) {
@@ -333,6 +373,7 @@ class CaptureActivity : AppCompatActivity() {
         area.photoUri = null
         area.photoPath = null
         areaAdapter.notifyDataSetChanged()
+        saveSession()
     }
 
     private fun deletePhoto(uri: Uri?, filePath: String?) {

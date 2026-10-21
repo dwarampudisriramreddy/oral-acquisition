@@ -86,8 +86,7 @@ class CaptureActivity : AppCompatActivity() {
             if (!written && !savedInOurFolder) {
                 val latest = StorageUtil.latestImageAfter(this, startedAt)
                 if (latest != null && latest != uri) {
-                    val formattedName = String.format("%02d_%s", area.id, area.name)
-                    val copied = StorageUtil.copyPhotoIntoArea(this, patient.folderName(), formattedName, latest)
+                    val copied = StorageUtil.copyPhotoIntoArea(this, patient.folderName(), area.name, latest)
                     if (copied != null) {
                         deletePhoto(uri, path)
                         uri = copied.uri
@@ -101,8 +100,7 @@ class CaptureActivity : AppCompatActivity() {
     
             if ((success || written) && uri != null) {
                 if (!successfullyRecovered) {
-                    val formattedName = String.format("%02d_%s", area.id, area.name)
-                    val copied = StorageUtil.copyPhotoIntoArea(this, patient.folderName(), formattedName, uri)
+                    val copied = StorageUtil.copyPhotoIntoArea(this, patient.folderName(), area.name, uri)
                     if (copied != null) {
                         deletePhoto(uri, path)
                         uri = copied.uri
@@ -311,8 +309,7 @@ class CaptureActivity : AppCompatActivity() {
                 return
             }
         }
-        val formattedAreaName = String.format("%02d_%s", area.id, area.name)
-        val location = StorageUtil.createTempPhotoLocation(this, patient.folderName(), formattedAreaName)
+        val location = StorageUtil.createTempPhotoLocation(this, patient.folderName(), area.name)
         pendingUri = location.uri
         pendingFilePath = location.filePath
         captureStartedAt = System.currentTimeMillis()

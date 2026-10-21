@@ -26,27 +26,27 @@ class CaptureActivity : AppCompatActivity() {
 
     companion object {
         private val ORAL_AREAS = listOf(
-            OralArea(1, "Extraoral"),
-            OralArea(2, "Upper Labial Mucosa"),
-            OralArea(3, "Lower Labial Mucosa"),
-            OralArea(4, "Anterior Bite"),
-            OralArea(5, "Right Bite"),
-            OralArea(6, "Left Bite"),
-            OralArea(7, "Open Right"),
-            OralArea(8, "Open Left"),
-            OralArea(9, "Right Buccal Mucosa"),
-            OralArea(10, "Left Buccal Mucosa"),
-            OralArea(11, "Palate"),
-            OralArea(12, "Upper Lingual"),
-            OralArea(13, "Floor of Mouth"),
-            OralArea(14, "Lower Lingual"),
-            OralArea(15, "Tongue Surface"),
-            OralArea(16, "Upper Right Retract"),
-            OralArea(17, "Upper Left Retract"),
-            OralArea(18, "Lower Left Retract"),
-            OralArea(19, "Lower Right Retract"),
-            OralArea(20, "Pathology")
-        )
+            "Extraoral",
+            "Upper Labial Mucosa",
+            "Lower Labial Mucosa",
+            "Anterior Bite",
+            "Right Bite",
+            "Left Bite",
+            "Open Right",
+            "Open Left",
+            "Right Buccal Mucosa",
+            "Left Buccal Mucosa",
+            "Palate",
+            "Upper Lingual",
+            "Floor of Mouth",
+            "Lower Lingual",
+            "Tongue Surface",
+            "Upper Right Retract",
+            "Upper Left Retract",
+            "Lower Left Retract",
+            "Lower Right Retract",
+            "Pathology"
+        ).mapIndexed { index, name -> OralArea(index + 1, name) }
     }
 
     private lateinit var binding: ActivityCaptureBinding
@@ -244,10 +244,9 @@ class CaptureActivity : AppCompatActivity() {
                 val baseName = match?.groupValues?.get(1)?.trim() ?: area.name
                 
                 val currentCount = areas.count { it.name.startsWith(baseName) }
-                val newId = if (areas.isNotEmpty()) areas.maxOf { it.id } + 1 else 1
                 
                 val insertIndex = areas.indexOf(area) + 1
-                val newArea = OralArea(newId, "$baseName ${currentCount + 1}")
+                val newArea = OralArea(name = "$baseName ${currentCount + 1}")
                 areas.add(insertIndex, newArea)
                 areaAdapter.notifyItemInserted(insertIndex)
                 binding.rvAreas.scrollToPosition(insertIndex)
@@ -261,8 +260,7 @@ class CaptureActivity : AppCompatActivity() {
 
         binding.btnAddPathology.setOnClickListener {
             val currentCount = areas.count { it.name.startsWith("Pathology") }
-            val newId = areas.maxOf { it.id } + 1
-            areas.add(OralArea(newId, "Pathology ${currentCount + 1}"))
+            areas.add(OralArea(name = "Pathology ${currentCount + 1}"))
             areaAdapter.notifyItemInserted(areas.size - 1)
             binding.rvAreas.scrollToPosition(areas.size - 1)
             saveSession()

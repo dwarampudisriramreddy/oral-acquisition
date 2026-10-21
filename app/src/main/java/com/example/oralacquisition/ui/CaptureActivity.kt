@@ -28,22 +28,24 @@ class CaptureActivity : AppCompatActivity() {
         private val ORAL_AREAS = listOf(
             OralArea(1, "Extraoral"),
             OralArea(2, "Upper Labial Mucosa"),
-            OralArea(3, "Lingual Labial Mucosa"),
+            OralArea(3, "Lower Labial Mucosa"),
             OralArea(4, "Anterior Bite"),
             OralArea(5, "Right Bite"),
             OralArea(6, "Left Bite"),
-            OralArea(7, "Right Buccal Mucosa"),
-            OralArea(8, "Left Buccal Mucosa"),
-            OralArea(9, "Palate"),
-            OralArea(10, "Upper Lingual"),
-            OralArea(11, "Floor of Mouth"),
-            OralArea(12, "Lower Lingual"),
-            OralArea(13, "Tongue Surface"),
-            OralArea(14, "Upper Right Retract"),
-            OralArea(15, "Upper Left Retract"),
-            OralArea(16, "Lower Left Retract"),
-            OralArea(17, "Lower Right Retract"),
-            OralArea(18, "Pathology")
+            OralArea(7, "Open Right"),
+            OralArea(8, "Open Left"),
+            OralArea(9, "Right Buccal Mucosa"),
+            OralArea(10, "Left Buccal Mucosa"),
+            OralArea(11, "Palate"),
+            OralArea(12, "Upper Lingual"),
+            OralArea(13, "Floor of Mouth"),
+            OralArea(14, "Lower Lingual"),
+            OralArea(15, "Tongue Surface"),
+            OralArea(16, "Upper Right Retract"),
+            OralArea(17, "Upper Left Retract"),
+            OralArea(18, "Lower Left Retract"),
+            OralArea(19, "Lower Right Retract"),
+            OralArea(20, "Pathology")
         )
     }
 
